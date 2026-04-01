@@ -1,0 +1,1133 @@
+{
+  "info": {
+    "name": "ISME v2 Backend - Debug",
+    "_postman_id": "isme-v2-be-debug-collection",
+    "description": "Collection completa per debuggare ISME-v2-be.\n\n**Setup:**\n1. Imposta la variabile `baseUrl` (default: http://76.13.155.31:8082)\n2. Fai Login Mobile → il token viene salvato automaticamente\n3. Tutte le request mobile useranno il Bearer token automaticamente\n4. Per backoffice: fai Login Backoffice → il cookie viene gestito da Postman\n\n**Debug Auth Flow:**\n- Login Mobile → Verify Mobile → Mobile Sync GET → controlla se la catena funziona\n- Se verify fallisce dopo login, il problema è nel backend (token storage/lookup)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://76.13.155.31:8082",
+      "type": "string"
+    },
+    {
+      "key": "mobileToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "interventionId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "teamId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "operatorId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏥 Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica che il server risponda. Se fallisce, il backend è down."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Auth - Mobile (Electron/Tablet)",
+      "item": [
+        {
+          "name": "1. Login Mobile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Login success', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(res.data).to.have.property('Token');",
+                  "});",
+                  "",
+                  "if (res.data && res.data.Token) {",
+                  "    pm.collectionVariables.set('mobileToken', res.data.Token);",
+                  "    ",
+                  "    // Decode JWT and show payload",
+                  "    const parts = res.data.Token.split('.');",
+                  "    const payload = JSON.parse(atob(parts[1]));",
+                  "    console.log('JWT Payload:', JSON.stringify(payload, null, 2));",
+                  "    console.log('Token signature (for DB lookup):', parts[2]);",
+                  "    console.log('Token signature length:', parts[2].length);",
+                  "    console.log('Expires at:', new Date(payload.exp * 1000).toISOString());",
+                  "    console.log('User ID:', payload.userId);",
+                  "    console.log('Full token length:', res.data.Token.length);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"operatore1\",\n    \"password\": \"password123\",\n    \"deviceUuid\": \"postman-debug-device\",\n    \"deviceName\": \"Postman Debug\",\n    \"platform\": \"other\",\n    \"appVersion\": \"2.0.0-debug\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "login"]
+            },
+            "description": "Login mobile — salva automaticamente il token nella variabile `mobileToken`.\n\n⚠️ **Cambia username e password con credenziali valide!**\n\nIl test script:\n- Salva il token per le request successive\n- Decodifica il JWT payload e lo stampa nella console\n- Mostra la signature (usata per DB lookup)"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Verify Mobile Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Verify returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Session is valid', function () {",
+                  "    pm.expect(res.data).to.have.property('Valid', true);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 401) {",
+                  "    console.error('❌ 401! Backend Error:', res.Error || JSON.stringify(res));",
+                  "    console.log('Token used:', pm.collectionVariables.get('mobileToken').substring(0, 50) + '...');",
+                  "    ",
+                  "    // Decode to check expiry",
+                  "    const token = pm.collectionVariables.get('mobileToken');",
+                  "    if (token) {",
+                  "        const parts = token.split('.');",
+                  "        const payload = JSON.parse(atob(parts[1]));",
+                  "        console.log('Token exp:', new Date(payload.exp * 1000).toISOString());",
+                  "        console.log('Now:', new Date().toISOString());",
+                  "        console.log('Signature:', parts[2]);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "verify"]
+            },
+            "description": "Verifica che il token mobile sia ancora valido.\n\n**Se questo ritorna 401 subito dopo il login, il bug è nel backend.**\n\nControlla nella console Postman:\n- L'errore esatto del backend\n- La signature del token\n- La scadenza del JWT"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Logout Mobile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Logout success', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    console.log('Token revoked on server. Next verify should return 401.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "logout"]
+            },
+            "description": "Revoca il token mobile sul server.\n\n⚠️ Dopo il logout, il token non sarà più valido — dovrai rifare il login."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Verify AFTER Logout (should 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 401 after logout', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "console.log('Expected 401, got:', pm.response.code, '| Error:', res.Error || 'none');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "verify"]
+            },
+            "description": "Dopo il logout, verifica che il token sia stato effettivamente revocato.\nDeve ritornare 401."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Auth - Backoffice",
+      "item": [
+        {
+          "name": "Login Backoffice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login success', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Cookie is auto-managed by Postman",
+                  "console.log('Session cookie set. Backoffice requests will use it automatically.');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@isme.it\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login backoffice via cookie.\n\n⚠️ **Cambia email e password con credenziali valide!**"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Backoffice Session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "verify"]
+            },
+            "description": "Verifica la sessione backoffice (usa il cookie `session` automaticamente)."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout Backoffice",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📱 Mobile Sync (Debug Electron Flow)",
+      "item": [
+        {
+          "name": "1. Login + Verify + Sync (Full Flow)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Login success', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(res.data).to.have.property('Token');",
+                  "});",
+                  "",
+                  "if (res.data && res.data.Token) {",
+                  "    pm.collectionVariables.set('mobileToken', res.data.Token);",
+                  "    console.log('✅ Token saved. Run \"2. Sync GET\" and \"3. Sync POST\" next.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"operatore1\",\n    \"password\": \"password123\",\n    \"deviceUuid\": \"postman-debug-device\",\n    \"deviceName\": \"Postman Debug\",\n    \"platform\": \"other\",\n    \"appVersion\": \"2.0.0-debug\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "login"]
+            },
+            "description": "Step 1: Login per ottenere il token. Esegui questo prima di Sync GET/POST."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Sync GET (Pull Interventions)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sync GET returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    const items = res.data || [];",
+                  "    console.log('✅ Received', items.length, 'interventions from server');",
+                  "    if (items.length > 0) {",
+                  "        console.log('First item:', JSON.stringify(items[0], null, 2).substring(0, 500));",
+                  "    }",
+                  "} else if (pm.response.code === 401) {",
+                  "    const res = pm.response.json();",
+                  "    console.error('❌ 401 on sync GET! Error:', res.Error);",
+                  "    console.log('This means the token from login is already invalid for sync!');",
+                  "    console.log('Token:', pm.collectionVariables.get('mobileToken').substring(0, 50) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/mobile/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "mobile", "sync"]
+            },
+            "description": "**Questo è l'endpoint che l'app Electron chiama durante il sync!**\n\nSe ritorna 401 dopo un login appena fatto, il problema è nel backend.\n\nControlla:\n- Il token è corretto? (Bearer header)\n- Il backend trova il record in access_tokens?\n- Il token è stato revocato?"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Sync POST (Push Interventions)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sync POST returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    console.log('✅ Sync POST response:', JSON.stringify(res, null, 2));",
+                  "} else if (pm.response.code === 401) {",
+                  "    const res = pm.response.json();",
+                  "    console.error('❌ 401 on sync POST! Error:', res.Error);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/mobile/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "mobile", "sync"]
+            },
+            "description": "Push vuoto — test che l'auth funzioni sull'endpoint POST sync.\n\nInvia un array vuoto per verificare solo l'autenticazione."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Teams Mobile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Teams returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    console.log('✅ Teams:', JSON.stringify(res.data, null, 2));",
+                  "} else if (pm.response.code === 401) {",
+                  "    const res = pm.response.json();",
+                  "    console.error('❌ 401 on teams! Error:', res.Error);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/mobile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams", "mobile"]
+            },
+            "description": "L'app Electron chiama questo durante la sync dei team."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔍 Debug Token (DB Inspection)",
+      "item": [
+        {
+          "name": "Decode Current Token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// This request doesn't actually call the server.",
+                  "// It just decodes the stored token for inspection."
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Decode the token stored in collection variables",
+                  "const token = pm.collectionVariables.get('mobileToken');",
+                  "",
+                  "if (!token) {",
+                  "    console.error('No token stored! Run Login Mobile first.');",
+                  "} else {",
+                  "    const parts = token.split('.');",
+                  "    console.log('=== TOKEN ANALYSIS ===');",
+                  "    console.log('Parts:', parts.length);",
+                  "    console.log('Full length:', token.length);",
+                  "    console.log('');",
+                  "    ",
+                  "    // Header",
+                  "    const header = JSON.parse(atob(parts[0]));",
+                  "    console.log('Header:', JSON.stringify(header));",
+                  "    ",
+                  "    // Payload",
+                  "    const payload = JSON.parse(atob(parts[1]));",
+                  "    console.log('Payload:', JSON.stringify(payload, null, 2));",
+                  "    console.log('');",
+                  "    console.log('userId:', payload.userId);",
+                  "    console.log('username:', payload.username);",
+                  "    console.log('deviceId:', payload.deviceId);",
+                  "    console.log('exp:', new Date(payload.exp * 1000).toISOString());",
+                  "    console.log('expired?:', Date.now() > payload.exp * 1000);",
+                  "    console.log('');",
+                  "    ",
+                  "    // Signature (this is what the backend uses for DB lookup)",
+                  "    console.log('Signature (full):', parts[2]);",
+                  "    console.log('Signature length:', parts[2].length);",
+                  "    console.log('');",
+                  "    console.log('💡 Search this signature in access_tokens.signature column.');",
+                  "    console.log('   SELECT * FROM access_tokens WHERE signature = \\'' + parts[2] + '\\';');",
+                  "}",
+                  "",
+                  "// The actual response doesn't matter — this is a diagnostic request",
+                  "pm.test('Token decoded (see console)', function () {",
+                  "    pm.expect(token).to.not.be.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Non è una vera request — usa il test script per decodificare e analizzare il token salvato.\n\nControlla la console Postman per:\n- JWT header/payload decodificato\n- Signature (usata per il lookup in access_tokens)\n- Query SQL per cercare il token nel DB\n- Se il token è scaduto"
+          },
+          "response": []
+        },
+        {
+          "name": "Login + Immediate Verify (Race Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "if (res.data && res.data.Token) {",
+                  "    const token = res.data.Token;",
+                  "    pm.collectionVariables.set('mobileToken', token);",
+                  "    ",
+                  "    const parts = token.split('.');",
+                  "    console.log('Login OK. Token signature:', parts[2].substring(0, 20) + '...');",
+                  "    ",
+                  "    // Immediately verify",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('baseUrl') + '/api/auth/mobile/verify',",
+                  "        method: 'GET',",
+                  "        header: {",
+                  "            'Authorization': 'Bearer ' + token",
+                  "        }",
+                  "    }, function (err, verifyRes) {",
+                  "        if (err) {",
+                  "            console.error('❌ Verify request failed:', err);",
+                  "            return;",
+                  "        }",
+                  "        const verifyBody = verifyRes.json();",
+                  "        console.log('Verify status:', verifyRes.code);",
+                  "        console.log('Verify body:', JSON.stringify(verifyBody));",
+                  "        ",
+                  "        if (verifyRes.code === 401) {",
+                  "            console.error('❌❌❌ TOKEN IS INVALID IMMEDIATELY AFTER LOGIN!');",
+                  "            console.error('Backend Error:', verifyBody.Error);",
+                  "            console.error('This confirms the bug is in the BACKEND, not in the Electron app.');",
+                  "            console.error('The token returned by login() cannot pass the Authenticate middleware.');",
+                  "        } else if (verifyRes.code === 200 && verifyBody.data?.Valid) {",
+                  "            console.log('✅ Token is valid immediately after login. The auth flow works correctly.');",
+                  "            console.log('If the Electron app still gets 401, the issue is in token storage/retrieval (encrypt/decrypt).');",
+                  "        }",
+                  "        ",
+                  "        // Also test sync endpoint",
+                  "        pm.sendRequest({",
+                  "            url: pm.collectionVariables.get('baseUrl') + '/api/interventions/mobile/sync',",
+                  "            method: 'GET',",
+                  "            header: {",
+                  "                'Authorization': 'Bearer ' + token",
+                  "            }",
+                  "        }, function (err2, syncRes) {",
+                  "            if (err2) {",
+                  "                console.error('❌ Sync request failed:', err2);",
+                  "                return;",
+                  "            }",
+                  "            console.log('Sync GET status:', syncRes.code);",
+                  "            if (syncRes.code === 401) {",
+                  "                const syncBody = syncRes.json();",
+                  "                console.error('❌ Sync returns 401! Error:', syncBody.Error);",
+                  "            } else {",
+                  "                const syncBody = syncRes.json();",
+                  "                console.log('✅ Sync GET OK — received', (syncBody.data || []).length, 'interventions');",
+                  "            }",
+                  "        });",
+                  "    });",
+                  "} else {",
+                  "    console.error('Login failed:', JSON.stringify(res));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"operatore1\",\n    \"password\": \"password123\",\n    \"deviceUuid\": \"postman-debug-device\",\n    \"deviceName\": \"Postman Debug\",\n    \"platform\": \"other\",\n    \"appVersion\": \"2.0.0-debug\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mobile/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "mobile", "login"]
+            },
+            "description": "**TEST CRITICO:**\n\n1. Fa login\n2. IMMEDIATAMENTE fa verify con lo stesso token\n3. IMMEDIATAMENTE fa sync GET con lo stesso token\n\nSe verify o sync falliscono con 401, **il bug è nel backend** — il token appena emesso non è valido.\n\nSe tutto funziona qui ma l'Electron app fallisce, il bug è nella encrypt/decrypt del token in SessionManager."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📋 Interventions (Backoffice)",
+      "item": [
+        {
+          "name": "List Interventions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions?page=1&pageSize=20&sort=created_at&order=DESC",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "sort", "value": "created_at" },
+                { "key": "order", "value": "DESC" },
+                { "key": "team", "value": "", "disabled": true },
+                { "key": "status", "value": "", "disabled": true },
+                { "key": "type", "value": "", "disabled": true },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "deleted", "value": "false", "disabled": true }
+              ]
+            },
+            "description": "Lista paginata degli interventi. Richiede sessione backoffice (cookie)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Intervention by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/{{interventionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "{{interventionId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "stats"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "dashboard"],
+              "query": [
+                { "key": "type", "value": "", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard Charts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/dashboard/charts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "dashboard", "charts"],
+              "query": [
+                { "key": "type", "value": "", "disabled": true },
+                { "key": "year", "value": "", "disabled": true },
+                { "key": "dateFrom", "value": "", "disabled": true },
+                { "key": "dateTo", "value": "", "disabled": true },
+                { "key": "steamPrice", "value": "", "disabled": true },
+                { "key": "timeFrame", "value": "month", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Recent Interventions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/recent?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "recent"],
+              "query": [
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Intervention",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"tag\": \"TEST-001\",\n    \"business_team\": \"T1\",\n    \"location\": \"Area Test\",\n    \"component_equipment\": \"Valvola Test\",\n    \"inspection_date\": \"2026-03-04\",\n    \"intervention_type\": 0,\n    \"priority\": 1,\n    \"status\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions"]
+            },
+            "description": "Crea un nuovo intervento. Accetta auth backoffice o mobile."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Intervention",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": 2,\n    \"priority\": 2,\n    \"intervention_description\": \"Aggiornamento di test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/{{interventionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "{{interventionId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"ids\": [1],\n    \"deleted\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/toggle-delete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "toggle-delete"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interventions/export/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "interventions", "export", "csv"],
+              "query": [
+                { "key": "teamCode", "value": "", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👥 Teams",
+      "item": [
+        {
+          "name": "List Teams (Backoffice)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Team by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams", "{{teamId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Teams (Mobile)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/mobile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams", "mobile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Team",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Team Test\",\n    \"code\": \"TT\",\n    \"description\": \"Team di test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Team",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Team Aggiornato\",\n    \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams", "{{teamId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Team",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teams", "{{teamId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👷 Operators",
+      "item": [
+        {
+          "name": "List Operators",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/operators",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "operators"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Operator by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/operators/{{operatorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "operators", "{{operatorId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Operator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Mario\",\n    \"lastname\": \"Rossi\",\n    \"username\": \"mrossi\",\n    \"password\": \"test1234\",\n    \"email\": \"mario.rossi@isme.it\",\n    \"team_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/operators",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "operators"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Operator",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Mario Updated\",\n    \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/operators/{{operatorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "operators", "{{operatorId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Operator",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/operators/{{operatorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "operators", "{{operatorId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📸 Media & Images",
+      "item": [
+        {
+          "name": "List Media for Intervention",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/media/intervention/{{interventionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "intervention", "{{interventionId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Media File",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/media/1/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "1", "file"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Media",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/media/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "1"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Foto Perdita",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Images/fotoPerdita/example.jpg",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Images", "fotoPerdita", "example.jpg"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Foto Riparazione",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Images/fotoRiparazione/example.jpg",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Images", "fotoRiparazione", "example.jpg"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
