@@ -11,6 +11,7 @@ import type { TeamAttributes } from '../Models/Team';
 import type { InterventionAttributes } from '../Models/Intervention';
 import type { MediaAttributes } from '../Models/Media';
 import type { PaginatedResult } from '../Types/Pagination';
+import type { MediaSlot } from '../Types/Media';
 
 
 // ─── IUserAdapter ──────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ export interface IInterventionAdapter {
   FindRecent(limit: number): Promise<InterventionAttributes[]>;
   AggregateStats(): Promise<DashboardStats>;
   Create(data: Partial<InterventionAttributes>, transaction?: unknown): Promise<InterventionAttributes>;
-  Update(id: number, data: Partial<InterventionAttributes>): Promise<InterventionAttributes | null>;
+  Update(id: number, data: Partial<InterventionAttributes>, transaction?: unknown): Promise<InterventionAttributes | null>;
   ToggleDelete(ids: number[], deleted: boolean, deletedBy?: number | null): Promise<number>;
   FindAllForExport(teamCode?: string): Promise<InterventionAttributes[]>;
   FindAllForDashboard(filters?: { interventionType?: number; year?: number; dateFrom?: string; dateTo?: string }): Promise<InterventionAttributes[]>;
@@ -87,6 +88,8 @@ export interface IInterventionAdapter {
 export interface IMediaAdapter {
   FindById(id: number): Promise<MediaAttributes | null>;
   FindByInterventionId(interventionId: number): Promise<MediaAttributes[]>;
+  FindActiveByInterventionAndType(interventionId: number, mediaType: MediaSlot): Promise<MediaAttributes | null>;
   Create(data: Partial<MediaAttributes>, transaction?: unknown): Promise<MediaAttributes>;
+  Update(id: number, data: Partial<MediaAttributes>, transaction?: unknown): Promise<MediaAttributes | null>;
   SoftDelete(id: number, deletedBy?: number | null): Promise<void>;
 }

@@ -71,6 +71,12 @@ export interface InterventionDTO {
   DeletedBy: number | null;
   UpdatedAt: Date;
   CreatedAt: Date;
+
+  // Mobile photo sync hints
+  PhotoBeforeMediaId?: number | null;
+  PhotoBeforeFilename?: string | null;
+  PhotoAfterMediaId?: number | null;
+  PhotoAfterFilename?: string | null;
 }
 
 
@@ -80,6 +86,15 @@ export interface InterventionDTO {
 export const InterventionDTO = {
 
   FromModel(m: InterventionAttributes): InterventionDTO {
+    const mediaRows = ((m as any).Media ?? []) as Array<{
+      id: number;
+      media_type: string;
+      filename: string;
+    }>;
+
+    const photoBefore = mediaRows.find((row) => row.media_type === 'photo_before') ?? null;
+    const photoAfter = mediaRows.find((row) => row.media_type === 'photo_after') ?? null;
+
     return {
       Id: m.id,
       Tag: m.tag,
@@ -128,6 +143,10 @@ export const InterventionDTO = {
       DeletedBy: m.deleted_by,
       UpdatedAt: m.updated_at,
       CreatedAt: m.created_at,
+      PhotoBeforeMediaId: photoBefore?.id ?? null,
+      PhotoBeforeFilename: photoBefore?.filename ?? null,
+      PhotoAfterMediaId: photoAfter?.id ?? null,
+      PhotoAfterFilename: photoAfter?.filename ?? null,
     };
   },
 };

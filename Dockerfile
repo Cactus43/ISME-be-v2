@@ -36,6 +36,7 @@ COPY --from=builder /app/dist ./dist
 # Data volume for photos/documents
 RUN mkdir -p /data && chown isme:nodejs /data
 VOLUME ["/data"]
+ENV DATA_PATH=/data
 
 # Switch to non-root user
 USER isme

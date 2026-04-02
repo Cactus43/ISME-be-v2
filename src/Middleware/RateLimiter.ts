@@ -1,7 +1,16 @@
 import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
 
 
 // ─── Rate Limiters ─────────────────────────────────────────────────────────
+
+function IsMediaFileRequest(req: Request): boolean {
+  if (req.method !== 'GET') {
+    return false;
+  }
+
+  return /^\/api\/media\/\d+\/file$/.test(req.path) || req.path.startsWith('/api/Images/');
+}
 
 /** General API limiter: 100 requests per minute per IP. */
 export const API_LIMITER = rateLimit({
@@ -9,6 +18,7 @@ export const API_LIMITER = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => IsMediaFileRequest(req),
   message: { status: 'error', message: 'Too many requests, please try again later' },
 });
 

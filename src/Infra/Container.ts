@@ -73,6 +73,7 @@ function Build() {
 
   const MediaOps = new MediaOperations({
     MediaAdapter: MediaAdapterInstance,
+    InterventionAdapter: InterventionAdapterInstance,
     Logger: Log.child({ module: 'MediaOperations' }),
     EventBus: Bus,
   });
