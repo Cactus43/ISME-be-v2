@@ -12,11 +12,11 @@ import type { CreateInterventionInput, UpdateInterventionInput, ListIntervention
 import { InterventionDTO } from '../Data/Types/DTOs/InterventionDTO';
 import { OperationResult } from '../Data/Types/OperationResult';
 import { ComputeChartBundle, type ChartBundle } from '../Utils/ChartEngine';
+import { BuildInterventionExportRow, ResolveInterventionExportColumns } from '../Utils/InterventionExport';
 import { BadRequestError, NotFoundError } from '../Data/Exceptions/Index';
 import { NormalizeInterventionData } from '../Utils/Normalize';
 import { CalculateSteamFlow } from '../Utils/SteamFlow';
-import { Config } from '../Config/Index';
-import { Sequelize } from '../Infra/Database';
+import { Config } from '../Config/Index';import { Sequelize } from '../Infra/Database';
 import type { EventBus } from '../Infra/EventBus';
 
 
@@ -292,12 +292,8 @@ export class InterventionOperations implements IInterventionOperations {
 
     if (rows.length === 0) throw new NotFoundError('No interventions found for export');
 
-    const headers = [
-      'ID', 'Tag', 'Team', 'Unit', 'Type', 'Priority', 'Status',
-      'Location', 'Component', 'Size', 'Operator', 'Inspection Date',
-      'Pressure', 'Plume Length', 'Steam Flow (kg/h)', 'Steam Flow (t/yr)',
-      'Repair Date', 'Description', 'Created At',
-    ];
+    const columns = ResolveInterventionExportColumns(options?.Columns);
+    const headers = columns.map((column) => column.Header);
 
     const escapeCsvValue = (value: unknown): string => {
       const normalized = value == null ? '' : String(value);
@@ -310,20 +306,9 @@ export class InterventionOperations implements IInterventionOperations {
       return mustQuote ? `"${escaped}"` : escaped;
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const csvRows = (rows as any[]).map((r) => {
-      const op = r['Operator'] as Record<string, string> | null;
-      return [
-        r.id, r.tag, r.business_team, r.unit ?? '',
-        r.intervention_type, r.priority, r.status,
-        r.location, r.component_equipment, r.size ?? '',
-        op ? `${op.firstname} ${op.lastname}` : '',
-        r.inspection_date, r.pressure ?? '',
-        r.plume_length ?? '', r.steam_flow_kg ?? 0, r.steam_flow_tonne ?? 0,
-        r.repair_date ?? '', r.intervention_description ?? '',
-        r.created_at,
-      ].map(escapeCsvValue).join(separator);
-    });
+    const csvRows = rows.map((row) => BuildInterventionExportRow(row as InterventionAttributes & { Operator?: { firstname?: string | null; lastname?: string | null } | null }, columns)
+      .map(escapeCsvValue)
+      .join(separator));
 
     const payload = includeHeader
       ? [headers.map(escapeCsvValue).join(separator), ...csvRows].join(newline)
@@ -343,38 +328,12 @@ export class InterventionOperations implements IInterventionOperations {
 
     if (rows.length === 0) throw new NotFoundError('No interventions found for export');
 
-    const headers = [
-      'ID', 'Tag', 'Team', 'Unit', 'Type', 'Priority', 'Status',
-      'Location', 'Component', 'Size', 'Operator', 'Inspection Date',
-      'Pressure', 'Plume Length', 'Steam Flow (kg/h)', 'Steam Flow (t/yr)',
-      'Repair Date', 'Description', 'Created At',
-    ];
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const matrix = (rows as any[]).map((r) => {
-      const op = r['Operator'] as Record<string, string> | null;
-      return [
-        r.id,
-        r.tag,
-        r.business_team,
-        r.unit ?? '',
-        r.intervention_type,
-        r.priority,
-        r.status,
-        r.location,
-        r.component_equipment,
-        r.size ?? '',
-        op ? `${op.firstname} ${op.lastname}` : '',
-        r.inspection_date,
-        r.pressure ?? '',
-        r.plume_length ?? '',
-        r.steam_flow_kg ?? 0,
-        r.steam_flow_tonne ?? 0,
-        r.repair_date ?? '',
-        r.intervention_description ?? '',
-        r.created_at,
-      ];
-    });
+    const columns = ResolveInterventionExportColumns(options?.Columns);
+    const headers = columns.map((column) => column.Header);
+    const matrix = rows.map((row) => BuildInterventionExportRow(
+      row as InterventionAttributes & { Operator?: { firstname?: string | null; lastname?: string | null } | null },
+      columns,
+    ));
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Interventions');

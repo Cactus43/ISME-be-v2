@@ -25,12 +25,14 @@ export interface ExportCsvOptions {
   IncludeHeader?: boolean;
   IncludeBom?: boolean;
   Ids?: number[];
+  Columns?: string[];
 }
 
 export interface ExportExcelOptions {
   IncludeHeader?: boolean;
   AutoFilter?: boolean;
   Ids?: number[];
+  Columns?: string[];
 }
 
 

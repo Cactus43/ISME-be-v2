@@ -211,6 +211,11 @@ export class InterventionController {
         ? idsRaw.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => Number.isInteger(v) && v > 0)
         : undefined;
 
+      const columnsRaw = req.query.columns as string | undefined;
+      const columns = columnsRaw
+        ? columnsRaw.split(',').map((value) => value.trim()).filter(Boolean)
+        : undefined;
+
       const options: ExportCsvOptions = {
         Separator: separator,
         QuoteMode: quoteMode,
@@ -218,6 +223,7 @@ export class InterventionController {
         IncludeHeader: includeHeader,
         IncludeBom: includeBom,
         Ids: ids && ids.length > 0 ? ids : undefined,
+        Columns: columns && columns.length > 0 ? columns : undefined,
       };
 
       const result = await this._ops.ExportCsv(teamCode, options);
@@ -240,10 +246,16 @@ export class InterventionController {
         ? idsRaw.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => Number.isInteger(v) && v > 0)
         : undefined;
 
+      const columnsRaw = req.query.columns as string | undefined;
+      const columns = columnsRaw
+        ? columnsRaw.split(',').map((value) => value.trim()).filter(Boolean)
+        : undefined;
+
       const options: ExportExcelOptions = {
         IncludeHeader: includeHeader,
         AutoFilter: autoFilter,
         Ids: ids && ids.length > 0 ? ids : undefined,
+        Columns: columns && columns.length > 0 ? columns : undefined,
       };
 
       const result = await this._ops.ExportExcel(teamCode, options);
