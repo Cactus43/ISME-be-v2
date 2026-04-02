@@ -579,4 +579,3 @@ export class InterventionOperations implements IInterventionOperations {
     );
   }
 }
-
