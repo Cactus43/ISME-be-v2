@@ -162,10 +162,11 @@ export class InterventionAdapter implements IInterventionAdapter {
     return row as unknown as InterventionAttributes;
   }
 
-  async Update(id: number, data: Partial<InterventionAttributes>): Promise<InterventionAttributes | null> {
-    const row = await Intervention.findByPk(id);
+  async Update(id: number, data: Partial<InterventionAttributes>, transaction?: unknown): Promise<InterventionAttributes | null> {
+    const options = transaction ? { transaction: transaction as import('sequelize').Transaction } : undefined;
+    const row = await Intervention.findByPk(id, options);
     if (!row) return null;
-    await row.update(data);
+    await row.update(data, options);
     return row as unknown as InterventionAttributes;
   }
 

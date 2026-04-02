@@ -13,6 +13,7 @@ import type { InterventionDTO } from '../Types/DTOs/InterventionDTO';
 import type { TeamDTO } from '../Types/DTOs/TeamDTO';
 import type { OperatorDTO } from '../Types/DTOs/OperatorDTO';
 import type { MediaDTO } from '../Types/DTOs/MediaDTO';
+import type { MediaSlot, UploadedMediaFile } from '../Types/Media';
 import type { LoginInput, MobileLoginInput } from '../Schemas/Auth';
 import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput } from '../Schemas/Intervention';
 import type { CreateTeamInput, UpdateTeamInput } from '../Schemas/Team';
@@ -72,6 +73,7 @@ export interface IInterventionOperations {
 export interface IMediaOperations {
   GetFile(id: number): Promise<OperationResult<{ FilePath: string; MimeType: string; Filename: string }>>;
   ListByIntervention(interventionId: number): Promise<OperationResult<MediaDTO[]>>;
+  UploadForIntervention(interventionId: number, slot: MediaSlot, file: UploadedMediaFile, context: RequestContext): Promise<OperationResult<MediaDTO>>;
   Delete(id: number, context: RequestContext): Promise<OperationResult<void>>;
 }
 

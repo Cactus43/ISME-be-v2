@@ -16,8 +16,10 @@ import { BuildInterventionExportRow, ResolveInterventionExportColumns } from '..
 import { BadRequestError, NotFoundError } from '../Data/Exceptions/Index';
 import { NormalizeInterventionData } from '../Utils/Normalize';
 import { CalculateSteamFlow } from '../Utils/SteamFlow';
-import { Config } from '../Config/Index';import { Sequelize } from '../Infra/Database';
+import { Sequelize } from '../Infra/Database';
 import type { EventBus } from '../Infra/EventBus';
+import type { MediaSlot } from '../Data/Types/Media';
+import { BuildMediaStorageTarget, DecodeBase64Image } from '../Utils/MediaStorage';
 
 
 // ─── InterventionOperations ────────────────────────────────────────────────
@@ -400,6 +402,9 @@ export class InterventionOperations implements IInterventionOperations {
             if (item.status !== undefined) updateData.status = item.status;
             if (item.priority !== undefined) updateData.priority = item.priority;
 
+            const fotoPerdita = item.fotoPerdita as string | undefined;
+            const fotoRiparazione = item.fotoRiparazione as string | undefined;
+
             // Calculate steam flow if pressure + plume provided
             if (updateData.pressure && updateData.plume_length) {
               const plumeNum = parseFloat(String(updateData.plume_length));
@@ -412,6 +417,12 @@ export class InterventionOperations implements IInterventionOperations {
             }
 
             await this._interventionAdapter.Update(serverId, updateData);
+            if (fotoPerdita) {
+              await this._savePhoto(serverId, fotoPerdita, 'photo_before', context.UserId, context.DeviceId);
+            }
+            if (fotoRiparazione) {
+              await this._savePhoto(serverId, fotoRiparazione, 'photo_after', context.UserId, context.DeviceId);
+            }
             idMap[localId] = serverId;
             continue;
           }
@@ -497,38 +508,75 @@ export class InterventionOperations implements IInterventionOperations {
   private async _savePhoto(
     interventionId: number,
     base64Data: string,
-    type: 'photo_before' | 'photo_after',
+    type: MediaSlot,
     userId: number | null,
     deviceId: number | null,
-    transaction: unknown,
+    transaction?: unknown,
   ): Promise<void> {
-    const raw = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(raw, 'base64');
+    const file = DecodeBase64Image(base64Data);
+    const target = BuildMediaStorageTarget(interventionId, type, file);
+    const existing = await this._mediaAdapter.FindActiveByInterventionAndType(interventionId, type);
 
-    const folder = type === 'photo_before' ? 'fotoPerdita' : 'fotoRiparazione';
-    const filename = `${interventionId}_${Date.now()}.jpg`;
-    const storagePath = `${folder}/${filename}`;
-    const absolutePath = path.resolve(Config.DataPath, storagePath);
-    if (!absolutePath.startsWith(path.resolve(Config.DataPath))) {
-      throw new Error('Invalid storage path');
+    await fs.mkdir(path.dirname(target.AbsolutePath), { recursive: true });
+    await fs.writeFile(target.AbsolutePath, file.Buffer);
+
+    if (existing) {
+      const previousAbsolutePath = path.resolve(path.dirname(target.AbsolutePath), existing.filename);
+
+      await this._mediaAdapter.Update(
+        existing.id,
+        {
+          filename: target.Filename,
+          original_filename: file.OriginalName,
+          mime_type: file.MimeType,
+          file_size: file.Size,
+          storage_path: target.StoragePath,
+          updated_by: userId,
+          device_id: deviceId,
+        },
+        transaction,
+      );
+
+      if (previousAbsolutePath !== target.AbsolutePath) {
+        await fs.rm(previousAbsolutePath, { force: true });
+      }
+
+      await this._touchInterventionUpdatedAt(interventionId, userId, transaction);
+      return;
     }
-
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    await fs.writeFile(absolutePath, buffer);
 
     await this._mediaAdapter.Create(
       {
         intervention_id: interventionId,
         media_type: type,
-        filename,
-        original_filename: filename,
-        mime_type: 'image/jpeg',
-        file_size: buffer.length,
-        storage_path: storagePath,
+        filename: target.Filename,
+        original_filename: file.OriginalName,
+        mime_type: file.MimeType,
+        file_size: file.Size,
+        storage_path: target.StoragePath,
         created_by: userId,
+        updated_by: userId,
         device_id: deviceId,
+      },
+      transaction,
+    );
+
+    await this._touchInterventionUpdatedAt(interventionId, userId, transaction);
+  }
+
+  private async _touchInterventionUpdatedAt(
+    interventionId: number,
+    userId: number | null,
+    transaction?: unknown,
+  ): Promise<void> {
+    await this._interventionAdapter.Update(
+      interventionId,
+      {
+        updated_at: new Date(),
+        updated_by: userId,
       },
       transaction,
     );
   }
 }
+
