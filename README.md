@@ -27,6 +27,36 @@ npm run build
 npm start
 ```
 
+### Docker Compose
+
+Il backend usa un database MySQL già esistente. Il `docker-compose.yml` quindi avvia solo l'API e monta lo storage foto su disco host.
+
+```bash
+# Copia e configura le variabili d'ambiente
+cp .env.example .env
+
+# Imposta credenziali DB/JWT/CORS reali in .env
+
+# Avvio in background
+docker compose up -d --build
+
+# Log
+docker compose logs -f backend
+
+# Stop
+docker compose down
+```
+
+Note operative:
+
+- `docker-compose.yml` forza `NODE_ENV=production` e `DATA_PATH=/data`.
+- Le immagini vengono persistite nella cartella host `./data`, montata nel container come `/data`.
+- La cartella host montata deve essere scrivibile dal container. Se necessario, crea prima la cartella con permessi adeguati:
+
+```bash
+mkdir -p data
+```
+
 ---
 
 ## Variabili d'Ambiente
@@ -46,6 +76,11 @@ npm start
 | `CORS_ORIGINS` | `http://localhost:3001` | Origini CORS (separati da virgola) |
 | `DATA_PATH` | `./data` | Percorso storage foto/documenti |
 | `LOG_LEVEL` | `debug` | Livello logging pino |
+
+Per Docker Compose:
+
+- `NODE_ENV` viene impostato a `production`
+- `DATA_PATH` viene forzato a `/data`
 
 ---
 
@@ -177,6 +212,7 @@ Request → Middleware (helmet, RequestLogger, cors, rate-limit, authenticate, v
 |--------|----------|------|-------------|
 | `GET` | `/api/media/:id/file` | Entrambi | Scarica file media |
 | `GET` | `/api/media/intervention/:id` | Entrambi | Lista media di un intervento |
+| `POST` | `/api/media/intervention/:id/slot/:slot` | Backoffice | Upload/sostituzione `photo_before` o `photo_after` via multipart |
 | `DELETE` | `/api/media/:id` | Backoffice | Elimina media |
 
 ### Teams — `/api/teams`

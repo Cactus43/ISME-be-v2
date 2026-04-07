@@ -8,7 +8,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src/ ./src/
@@ -20,6 +20,8 @@ RUN npm run build
 FROM node:20-alpine AS production
 
 WORKDIR /app
+ENV NODE_ENV=production
+ENV DATA_PATH=/data
 
 # Non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -27,16 +29,15 @@ RUN addgroup -g 1001 -S nodejs && \
 
 # Install production deps only
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Copy compiled output
 COPY --from=builder /app/dist ./dist
 
 # Data volume for photos/documents
-RUN mkdir -p /data && chown isme:nodejs /data
+RUN mkdir -p /data && chown -R isme:nodejs /app /data
 VOLUME ["/data"]
-ENV DATA_PATH=/data
 
 # Switch to non-root user
 USER isme
