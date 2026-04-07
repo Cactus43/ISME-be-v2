@@ -6,6 +6,7 @@ import { Container } from './Infra/Container';
 import { ErrorHandler } from './Middleware/ErrorHandler';
 import { RequestLogger } from './Middleware/RequestLogger';
 import { API_LIMITER } from './Middleware/RateLimiter';
+import { PrototypePollutionGuard } from './Middleware/PrototypePollutionGuard';
 import { NotFoundError } from './Data/Exceptions/Index';
 import { ImagesController } from './Controllers/ImagesController';
 
@@ -26,6 +27,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(PrototypePollutionGuard);
 app.use(API_LIMITER);
 
 

@@ -151,6 +151,12 @@ export function ResolveInterventionExportColumns(keys?: string[]): InterventionE
   return selected.length > 0 ? selected : INTERVENTION_EXPORT_COLUMNS;
 }
 
+function NormalizeExportCellValue(value: unknown): string | number {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  return String(value);
+}
+
 export function BuildInterventionExportRow(row: ExportRow, columns: InterventionExportColumn[]): Array<string | number> {
-  return columns.map((column) => column.GetValue(row));
+  return columns.map((column) => NormalizeExportCellValue(column.GetValue(row)));
 }
