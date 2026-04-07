@@ -27,35 +27,70 @@ npm run build
 npm start
 ```
 
-### Docker Compose
+### Deploy VPS con Docker
 
-Il backend usa un database MySQL già esistente. Il `docker-compose.yml` quindi avvia solo l'API e monta lo storage foto su disco host.
+Questo backend usa un database MySQL esterno già esistente. Il file docker-compose avvia solo il servizio backend.
+
+1. Clona o aggiorna il repository sul VPS
 
 ```bash
-# Copia e configura le variabili d'ambiente
-cp .env.example .env
-
-# Imposta credenziali DB/JWT/CORS reali in .env
-
-# Avvio in background
-docker compose up -d --build
-
-# Log
-docker compose logs -f backend
-
-# Stop
-docker compose down
+git clone <repo-url> isme-be-v2
+cd isme-be-v2
+# oppure, se esiste già
+git pull
 ```
 
-Note operative:
+2. Crea il file ambiente
 
-- `docker-compose.yml` forza `NODE_ENV=production` e `DATA_PATH=/data`.
-- Le immagini vengono persistite nella cartella host `./data`, montata nel container come `/data`.
-- La cartella host montata deve essere scrivibile dal container. Se necessario, crea prima la cartella con permessi adeguati:
+```bash
+cp .env.example .env
+```
+
+3. Modifica .env con valori reali (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, JWT_SECRET, CORS_ORIGINS)
+
+4. Crea la cartella dati persistente sul VPS
 
 ```bash
 mkdir -p data
 ```
+
+5. Avvia il servizio
+
+```bash
+docker compose up -d --build
+```
+
+6. Controlla stato e log
+
+```bash
+docker compose logs -f backend
+docker compose ps
+```
+
+7. Riavvio del solo backend
+
+```bash
+docker compose restart backend
+```
+
+8. Stop stack
+
+```bash
+docker compose down
+```
+
+9. Verifica health endpoint
+
+```bash
+curl http://127.0.0.1:8081/health
+```
+
+Note operative:
+
+- MySQL non viene avviato da Docker Compose: deve essere già disponibile esternamente.
+- Le immagini sono persistite su host in ./data, montata nel container come /data.
+- Se upload immagini fallisce, controlla i permessi della cartella data sul VPS.
+- Se usi Nginx, configura il reverse proxy verso http://127.0.0.1:8081.
 
 ---
 

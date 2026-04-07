@@ -5,3 +5,6 @@ data
 .gitignore
 npm-debug.log*
 .DS_Store
+.env
+coverage
+*.local
