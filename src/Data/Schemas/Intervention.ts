@@ -133,7 +133,7 @@ export type ListInterventionsQuery = z.infer<typeof LIST_INTERVENTIONS_QUERY_SCH
 
 export const TOGGLE_DELETE_SCHEMA = z.object({
   ids: z.array(z.number().int().positive()).min(1, 'At least one ID required'),
-  deleted: z.boolean(),
+  deleted: z.boolean().optional().default(true),
 });
 
 export type ToggleDeleteInput = z.infer<typeof TOGGLE_DELETE_SCHEMA>;

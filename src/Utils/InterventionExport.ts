@@ -48,6 +48,8 @@ type ExportRow = InterventionAttributes & {
   Operator?: { firstname?: string | null; lastname?: string | null } | null;
 };
 
+export type ExportLanguage = 'it' | 'en';
+
 interface InterventionExportColumn {
   Key: InterventionExportColumnKey;
   Header: string;
@@ -68,21 +70,112 @@ const FormatDateTime = (value: Date | string | null | undefined): string => {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 };
 
-const FormatTriState = (value: number | null | undefined): string => {
-  if (value === 1) return 'Si';
-  if (value === 0) return 'No';
-  return 'N/A';
+const HeaderByLanguage: Record<ExportLanguage, Record<InterventionExportColumnKey, string>> = {
+  it: {
+    id: 'ID',
+    tag: 'Tag',
+    businessTeam: 'Business Team',
+    unit: 'Unita',
+    interventionType: 'Tipo Intervento',
+    priority: 'Priorita',
+    status: 'Stato',
+    inspectionDate: 'Data Ispezione',
+    repairDate: 'Data Riparazione',
+    postDate: 'Post Date',
+    location: 'Ubicazione',
+    componentEquipment: 'Componente/Equipaggiamento',
+    size: 'Misura',
+    operator: 'Operatore',
+    competence: 'Competenza',
+    service: 'Servizio',
+    pressure: 'Pressione',
+    nominalFlow: 'Portata Nominale',
+    steamFlowKg: 'Portata Vapore (kg/h)',
+    steamFlowTonne: 'Portata Vapore (t/anno)',
+    plumeLength: 'Lunghezza Pennacchio',
+    plumeSpec: 'Spec Pennacchio',
+    malfunctioningType: 'Tipo Malfunzionamento',
+    dischargerType: 'Tipo Scaricatore',
+    dnDischarger: 'DN Scaricatore',
+    scaffolding: 'Ponteggio',
+    interceptionPossibility: 'Possibilita Intercetto',
+    interceptionValveStatus: 'Stato Valvola Intercetto',
+    needForInsulation: 'Necessita Scoibentazione',
+    asbestos: 'Amianto',
+    steamDischargeToClosedSystem: 'Scarico Vapore in Sistema Chiuso',
+    insulationMaterial: 'Materiale Isolante',
+    metalSheet: 'Lamierino',
+    metalSheetTemperature: 'Temperatura Lamierino',
+    pipeTemperature: 'Temperatura Tubazione',
+    traitLength: 'Lunghezza Tratto',
+    notification: 'Notifica',
+    closureNotification: 'Notifica Chiusura',
+    interventionDescription: 'Descrizione Intervento',
+    reason: 'Motivazione',
+    createdAt: 'Creato Il',
+    updatedAt: 'Aggiornato Il',
+  },
+  en: {
+    id: 'ID',
+    tag: 'Tag',
+    businessTeam: 'Business Team',
+    unit: 'Unit',
+    interventionType: 'Intervention Type',
+    priority: 'Priority',
+    status: 'Status',
+    inspectionDate: 'Inspection Date',
+    repairDate: 'Repair Date',
+    postDate: 'Post Date',
+    location: 'Location',
+    componentEquipment: 'Component Equipment',
+    size: 'Size',
+    operator: 'Operator',
+    competence: 'Competence',
+    service: 'Service',
+    pressure: 'Pressure',
+    nominalFlow: 'Nominal Flow',
+    steamFlowKg: 'Steam Flow (kg/h)',
+    steamFlowTonne: 'Steam Flow (t/yr)',
+    plumeLength: 'Plume Length',
+    plumeSpec: 'Plume Spec',
+    malfunctioningType: 'Malfunctioning Type',
+    dischargerType: 'Discharger Type',
+    dnDischarger: 'DN Discharger',
+    scaffolding: 'Scaffolding',
+    interceptionPossibility: 'Interception Possibility',
+    interceptionValveStatus: 'Interception Valve Status',
+    needForInsulation: 'Need For Insulation',
+    asbestos: 'Asbestos',
+    steamDischargeToClosedSystem: 'Steam Discharge To Closed System',
+    insulationMaterial: 'Insulation Material',
+    metalSheet: 'Metal Sheet',
+    metalSheetTemperature: 'Metal Sheet Temperature',
+    pipeTemperature: 'Pipe Temperature',
+    traitLength: 'Trait Length',
+    notification: 'Notification',
+    closureNotification: 'Closure Notification',
+    interventionDescription: 'Intervention Description',
+    reason: 'Reason',
+    createdAt: 'Created At',
+    updatedAt: 'Updated At',
+  },
 };
 
-const FormatStatus = (value: number | null | undefined): string => {
-  if (value === 0 || value === 2 || value === 3) return 'Chiuso';
-  return 'Aperto';
+const FormatTriState = (value: number | null | undefined, language: ExportLanguage): string => {
+  if (value === 1) return language === 'en' ? 'Yes' : 'Si';
+  if (value === 0) return language === 'en' ? 'No' : 'No';
+  return language === 'en' ? 'N/A' : 'N/D';
+};
+
+const FormatStatus = (value: number | null | undefined, language: ExportLanguage): string => {
+  if (value === 0 || value === 2 || value === 3) return language === 'en' ? 'Closed' : 'Chiuso';
+  return language === 'en' ? 'Open' : 'Aperto';
 };
 
 const FormatInterventionType = (value: number | null | undefined): string => {
   switch (value) {
     case 0:
-      return 'Insulation Report';
+      return 'Insulation';
     case 1:
       return 'Steam Leak';
     case 2:
@@ -98,57 +191,61 @@ const FormatOperator = (row: ExportRow): string => {
   return `${firstname} ${lastname}`.trim();
 };
 
-export const INTERVENTION_EXPORT_COLUMNS: InterventionExportColumn[] = [
-  { Key: 'id', Header: 'ID', GetValue: (row) => row.id },
-  { Key: 'tag', Header: 'Tag', GetValue: (row) => row.tag },
-  { Key: 'businessTeam', Header: 'Business Team', GetValue: (row) => row.business_team },
-  { Key: 'unit', Header: 'Unit', GetValue: (row) => row.unit ?? '' },
-  { Key: 'interventionType', Header: 'Intervention Type', GetValue: (row) => FormatInterventionType(row.intervention_type) },
-  { Key: 'priority', Header: 'Priority', GetValue: (row) => row.priority },
-  { Key: 'status', Header: 'Status', GetValue: (row) => FormatStatus(row.status) },
-  { Key: 'inspectionDate', Header: 'Inspection Date', GetValue: (row) => FormatDate(row.inspection_date) },
-  { Key: 'repairDate', Header: 'Repair Date', GetValue: (row) => FormatDate(row.repair_date) },
-  { Key: 'postDate', Header: 'Post Date', GetValue: (row) => row.post_date ?? '' },
-  { Key: 'location', Header: 'Location', GetValue: (row) => row.location },
-  { Key: 'componentEquipment', Header: 'Component Equipment', GetValue: (row) => row.component_equipment },
-  { Key: 'size', Header: 'Size', GetValue: (row) => row.size ?? '' },
-  { Key: 'operator', Header: 'Operator', GetValue: (row) => FormatOperator(row) },
-  { Key: 'competence', Header: 'Competence', GetValue: (row) => row.competence ?? '' },
-  { Key: 'service', Header: 'Service', GetValue: (row) => row.service ?? '' },
-  { Key: 'pressure', Header: 'Pressure', GetValue: (row) => row.pressure ?? '' },
-  { Key: 'nominalFlow', Header: 'Nominal Flow', GetValue: (row) => row.nominal_flow ?? '' },
-  { Key: 'steamFlowKg', Header: 'Steam Flow (kg/h)', GetValue: (row) => row.steam_flow_kg ?? '' },
-  { Key: 'steamFlowTonne', Header: 'Steam Flow (t/yr)', GetValue: (row) => row.steam_flow_tonne ?? '' },
-  { Key: 'plumeLength', Header: 'Plume Length', GetValue: (row) => row.plume_length ?? '' },
-  { Key: 'plumeSpec', Header: 'Plume Spec', GetValue: (row) => row.plume_spec ?? '' },
-  { Key: 'malfunctioningType', Header: 'Malfunctioning Type', GetValue: (row) => row.malfunctioning_type ?? '' },
-  { Key: 'dischargerType', Header: 'Discharger Type', GetValue: (row) => row.discharger_type ?? '' },
-  { Key: 'dnDischarger', Header: 'DN Discharger', GetValue: (row) => row.dn_discharger ?? '' },
-  { Key: 'scaffolding', Header: 'Scaffolding', GetValue: (row) => row.scaffolding ?? '' },
-  { Key: 'interceptionPossibility', Header: 'Interception Possibility', GetValue: (row) => row.interception_possibility ?? '' },
-  { Key: 'interceptionValveStatus', Header: 'Interception Valve Status', GetValue: (row) => FormatTriState(row.interception_valve_status) },
-  { Key: 'needForInsulation', Header: 'Need For Insulation', GetValue: (row) => FormatTriState(row.need_for_insulation) },
-  { Key: 'asbestos', Header: 'Asbestos', GetValue: (row) => FormatTriState(row.asbestos) },
-  { Key: 'steamDischargeToClosedSystem', Header: 'Steam Discharge To Closed System', GetValue: (row) => FormatTriState(row.steam_discharge_to_closed_system) },
-  { Key: 'insulationMaterial', Header: 'Insulation Material', GetValue: (row) => row.insulation_material ?? '' },
-  { Key: 'metalSheet', Header: 'Metal Sheet', GetValue: (row) => row.metal_sheet ?? '' },
-  { Key: 'metalSheetTemperature', Header: 'Metal Sheet Temperature', GetValue: (row) => row.metal_sheet_temperature ?? '' },
-  { Key: 'pipeTemperature', Header: 'Pipe Temperature', GetValue: (row) => row.pipe_temperature ?? '' },
-  { Key: 'traitLength', Header: 'Trait Length', GetValue: (row) => row.trait_length ?? '' },
-  { Key: 'notification', Header: 'Notification', GetValue: (row) => row.notification ?? '' },
-  { Key: 'closureNotification', Header: 'Closure Notification', GetValue: (row) => row.closure_notification ?? '' },
-  { Key: 'interventionDescription', Header: 'Intervention Description', GetValue: (row) => row.intervention_description ?? '' },
-  { Key: 'reason', Header: 'Reason', GetValue: (row) => row.reason ?? '' },
-  { Key: 'createdAt', Header: 'Created At', GetValue: (row) => FormatDateTime(row.created_at) },
-  { Key: 'updatedAt', Header: 'Updated At', GetValue: (row) => FormatDateTime(row.updated_at) },
-];
+function GetInterventionExportColumns(language: ExportLanguage): InterventionExportColumn[] {
+  const H = HeaderByLanguage[language];
+  return [
+    { Key: 'id', Header: H.id, GetValue: (row) => row.id },
+    { Key: 'tag', Header: H.tag, GetValue: (row) => row.tag },
+    { Key: 'businessTeam', Header: H.businessTeam, GetValue: (row) => row.business_team },
+    { Key: 'unit', Header: H.unit, GetValue: (row) => row.unit ?? '' },
+    { Key: 'interventionType', Header: H.interventionType, GetValue: (row) => FormatInterventionType(row.intervention_type) },
+    { Key: 'priority', Header: H.priority, GetValue: (row) => row.priority },
+    { Key: 'status', Header: H.status, GetValue: (row) => FormatStatus(row.status, language) },
+    { Key: 'inspectionDate', Header: H.inspectionDate, GetValue: (row) => FormatDate(row.inspection_date) },
+    { Key: 'repairDate', Header: H.repairDate, GetValue: (row) => FormatDate(row.repair_date) },
+    { Key: 'postDate', Header: H.postDate, GetValue: (row) => row.post_date ?? '' },
+    { Key: 'location', Header: H.location, GetValue: (row) => row.location },
+    { Key: 'componentEquipment', Header: H.componentEquipment, GetValue: (row) => row.component_equipment },
+    { Key: 'size', Header: H.size, GetValue: (row) => row.size ?? '' },
+    { Key: 'operator', Header: H.operator, GetValue: (row) => FormatOperator(row) },
+    { Key: 'competence', Header: H.competence, GetValue: (row) => row.competence ?? '' },
+    { Key: 'service', Header: H.service, GetValue: (row) => row.service ?? '' },
+    { Key: 'pressure', Header: H.pressure, GetValue: (row) => row.pressure ?? '' },
+    { Key: 'nominalFlow', Header: H.nominalFlow, GetValue: (row) => row.nominal_flow ?? '' },
+    { Key: 'steamFlowKg', Header: H.steamFlowKg, GetValue: (row) => row.steam_flow_kg ?? '' },
+    { Key: 'steamFlowTonne', Header: H.steamFlowTonne, GetValue: (row) => row.steam_flow_tonne ?? '' },
+    { Key: 'plumeLength', Header: H.plumeLength, GetValue: (row) => row.plume_length ?? '' },
+    { Key: 'plumeSpec', Header: H.plumeSpec, GetValue: (row) => row.plume_spec ?? '' },
+    { Key: 'malfunctioningType', Header: H.malfunctioningType, GetValue: (row) => row.malfunctioning_type ?? '' },
+    { Key: 'dischargerType', Header: H.dischargerType, GetValue: (row) => row.discharger_type ?? '' },
+    { Key: 'dnDischarger', Header: H.dnDischarger, GetValue: (row) => row.dn_discharger ?? '' },
+    { Key: 'scaffolding', Header: H.scaffolding, GetValue: (row) => row.scaffolding ?? '' },
+    { Key: 'interceptionPossibility', Header: H.interceptionPossibility, GetValue: (row) => row.interception_possibility ?? '' },
+    { Key: 'interceptionValveStatus', Header: H.interceptionValveStatus, GetValue: (row) => FormatTriState(row.interception_valve_status, language) },
+    { Key: 'needForInsulation', Header: H.needForInsulation, GetValue: (row) => FormatTriState(row.need_for_insulation, language) },
+    { Key: 'asbestos', Header: H.asbestos, GetValue: (row) => FormatTriState(row.asbestos, language) },
+    { Key: 'steamDischargeToClosedSystem', Header: H.steamDischargeToClosedSystem, GetValue: (row) => FormatTriState(row.steam_discharge_to_closed_system, language) },
+    { Key: 'insulationMaterial', Header: H.insulationMaterial, GetValue: (row) => row.insulation_material ?? '' },
+    { Key: 'metalSheet', Header: H.metalSheet, GetValue: (row) => row.metal_sheet ?? '' },
+    { Key: 'metalSheetTemperature', Header: H.metalSheetTemperature, GetValue: (row) => row.metal_sheet_temperature ?? '' },
+    { Key: 'pipeTemperature', Header: H.pipeTemperature, GetValue: (row) => row.pipe_temperature ?? '' },
+    { Key: 'traitLength', Header: H.traitLength, GetValue: (row) => row.trait_length ?? '' },
+    { Key: 'notification', Header: H.notification, GetValue: (row) => row.notification ?? '' },
+    { Key: 'closureNotification', Header: H.closureNotification, GetValue: (row) => row.closure_notification ?? '' },
+    { Key: 'interventionDescription', Header: H.interventionDescription, GetValue: (row) => row.intervention_description ?? '' },
+    { Key: 'reason', Header: H.reason, GetValue: (row) => row.reason ?? '' },
+    { Key: 'createdAt', Header: H.createdAt, GetValue: (row) => FormatDateTime(row.created_at) },
+    { Key: 'updatedAt', Header: H.updatedAt, GetValue: (row) => FormatDateTime(row.updated_at) },
+  ];
+}
 
-export function ResolveInterventionExportColumns(keys?: string[]): InterventionExportColumn[] {
-  if (!keys || keys.length === 0) return INTERVENTION_EXPORT_COLUMNS;
+export function ResolveInterventionExportColumns(keys?: string[], language: ExportLanguage = 'it'): InterventionExportColumn[] {
+  const allColumns = GetInterventionExportColumns(language);
+  if (!keys || keys.length === 0) return allColumns;
 
   const requested = new Set(keys);
-  const selected = INTERVENTION_EXPORT_COLUMNS.filter((column) => requested.has(column.Key));
-  return selected.length > 0 ? selected : INTERVENTION_EXPORT_COLUMNS;
+  const selected = allColumns.filter((column) => requested.has(column.Key));
+  return selected.length > 0 ? selected : allColumns;
 }
 
 function NormalizeExportCellValue(value: unknown): string | number {

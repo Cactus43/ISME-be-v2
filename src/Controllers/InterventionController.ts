@@ -205,6 +205,8 @@ export class InterventionController {
 
       const includeHeader = String(req.query.includeHeader ?? 'true').toLowerCase() === 'true';
       const includeBom = String(req.query.includeBom ?? 'true').toLowerCase() === 'true';
+      const languageRaw = String(req.query.lang ?? 'it').toLowerCase();
+      const language: 'it' | 'en' = languageRaw === 'en' ? 'en' : 'it';
 
       const idsRaw = req.query.ids as string | undefined;
       const ids = idsRaw
@@ -220,6 +222,7 @@ export class InterventionController {
         Separator: separator,
         QuoteMode: quoteMode,
         NewLine: newline,
+        Language: language,
         IncludeHeader: includeHeader,
         IncludeBom: includeBom,
         Ids: ids && ids.length > 0 ? ids : undefined,
@@ -240,6 +243,8 @@ export class InterventionController {
       const teamCode = req.query.teamCode as string | undefined;
       const includeHeader = String(req.query.includeHeader ?? 'true').toLowerCase() === 'true';
       const autoFilter = String(req.query.autoFilter ?? 'true').toLowerCase() === 'true';
+      const languageRaw = String(req.query.lang ?? 'it').toLowerCase();
+      const language: 'it' | 'en' = languageRaw === 'en' ? 'en' : 'it';
 
       const idsRaw = req.query.ids as string | undefined;
       const ids = idsRaw
@@ -252,6 +257,7 @@ export class InterventionController {
         : undefined;
 
       const options: ExportExcelOptions = {
+        Language: language,
         IncludeHeader: includeHeader,
         AutoFilter: autoFilter,
         Ids: ids && ids.length > 0 ? ids : undefined,

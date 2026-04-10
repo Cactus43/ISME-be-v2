@@ -23,6 +23,7 @@ export interface ExportCsvOptions {
   Separator?: ',' | ';';
   QuoteMode?: 'always' | 'auto';
   NewLine?: '\n' | '\r\n';
+  Language?: 'it' | 'en';
   IncludeHeader?: boolean;
   IncludeBom?: boolean;
   Ids?: number[];
@@ -30,6 +31,7 @@ export interface ExportCsvOptions {
 }
 
 export interface ExportExcelOptions {
+  Language?: 'it' | 'en';
   IncludeHeader?: boolean;
   AutoFilter?: boolean;
   Ids?: number[];

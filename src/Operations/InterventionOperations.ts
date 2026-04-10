@@ -284,6 +284,7 @@ export class InterventionOperations implements IInterventionOperations {
     const separator = options?.Separator ?? ';';
     const quoteMode = options?.QuoteMode ?? 'always';
     const newline = options?.NewLine ?? '\r\n';
+    const language = options?.Language ?? 'it';
     const includeHeader = options?.IncludeHeader ?? true;
     const includeBom = options?.IncludeBom ?? true;
 
@@ -294,7 +295,7 @@ export class InterventionOperations implements IInterventionOperations {
 
     if (rows.length === 0) throw new NotFoundError('No interventions found for export');
 
-    const columns = ResolveInterventionExportColumns(options?.Columns);
+    const columns = ResolveInterventionExportColumns(options?.Columns, language);
     const headers = columns.map((column) => column.Header);
 
     const escapeCsvValue = (value: unknown): string => {
@@ -320,6 +321,7 @@ export class InterventionOperations implements IInterventionOperations {
   }
 
   async ExportExcel(teamCode?: string, options?: ExportExcelOptions): Promise<OperationResult<Buffer>> {
+    const language = options?.Language ?? 'it';
     const includeHeader = options?.IncludeHeader ?? true;
     const autoFilter = options?.AutoFilter ?? true;
 
@@ -330,7 +332,7 @@ export class InterventionOperations implements IInterventionOperations {
 
     if (rows.length === 0) throw new NotFoundError('No interventions found for export');
 
-    const columns = ResolveInterventionExportColumns(options?.Columns);
+    const columns = ResolveInterventionExportColumns(options?.Columns, language);
     const headers = columns.map((column) => column.Header);
     const matrix = rows.map((row) => BuildInterventionExportRow(
       row as InterventionAttributes & { Operator?: { firstname?: string | null; lastname?: string | null } | null },
