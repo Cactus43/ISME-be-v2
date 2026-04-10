@@ -334,6 +334,7 @@ export class InterventionOperations implements IInterventionOperations {
 
     const columns = ResolveInterventionExportColumns(options?.Columns, language);
     const headers = columns.map((column) => column.Header);
+    const priorityColumnIndex = columns.findIndex((column) => column.Key === 'priority');
     const matrix = rows.map((row) => BuildInterventionExportRow(
       row as InterventionAttributes & { Operator?: { firstname?: string | null; lastname?: string | null } | null },
       columns,
@@ -356,7 +357,38 @@ export class InterventionOperations implements IInterventionOperations {
       }
     }
 
-    matrix.forEach((line) => ws.addRow(line));
+    matrix.forEach((line, index) => {
+      const rowRef = ws.addRow(line);
+
+      if (priorityColumnIndex < 0) return;
+
+      const excelColumn = priorityColumnIndex + 1;
+      const cell = rowRef.getCell(excelColumn);
+      const rawPriority = line[priorityColumnIndex];
+      const priority = typeof rawPriority === 'number' ? rawPriority : Number(rawPriority);
+
+      const colorByPriority: Record<number, string> = {
+        0: 'FF9CA3AF', // gray
+        1: 'FFE84855', // red
+        2: 'FFFFA449', // orange
+        3: 'FFDFC44A', // yellow
+      };
+
+      const fillColor = colorByPriority[priority];
+      if (!fillColor) return;
+
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: fillColor },
+      };
+
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.font = {
+        bold: true,
+        color: { argb: priority === 3 ? 'FF111827' : 'FFFFFFFF' },
+      };
+    });
     ws.columns.forEach((c) => {
       c.width = 18;
     });
