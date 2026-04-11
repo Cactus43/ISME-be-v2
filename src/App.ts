@@ -1,63 +1,84 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
+import Fastify, { type FastifyInstance } from 'fastify';
+import Cookie from '@fastify/cookie';
+import Cors from '@fastify/cors';
+import Helmet from '@fastify/helmet';
+import Multipart from '@fastify/multipart';
 import { Container } from './Infra/Container';
 import { ErrorHandler } from './Middleware/ErrorHandler';
-import { RequestLogger } from './Middleware/RequestLogger';
+import { RequestLogger, TrackRequestStart } from './Middleware/RequestLogger';
 import { API_LIMITER } from './Middleware/RateLimiter';
 import { PrototypePollutionGuard } from './Middleware/PrototypePollutionGuard';
 import { NotFoundError } from './Data/Exceptions/Index';
 import { ImagesController } from './Controllers/ImagesController';
 
 
-// ─── Express App ───────────────────────────────────────────────────────────
+// ─── Fastify App ───────────────────────────────────────────────────────────
 
-const app = express();
-
-
-// ─── Global Middleware ─────────────────────────────────────────────────────
-
-app.use(helmet());
-app.use(RequestLogger);
-app.use(cors({
-  origin: true,   // Allow ALL origins — Electron sends null/file:// origin
-  credentials: true,
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(PrototypePollutionGuard);
-app.use(API_LIMITER);
+export async function BuildApp(): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: false,
+    trustProxy: true,
+    bodyLimit: 10 * 1024 * 1024,
+  });
 
 
-// ─── Health Check ──────────────────────────────────────────────────────────
+  // ─── Global Plugins ──────────────────────────────────────────────────────
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  await app.register(Helmet);
+  await app.register(Cors, {
+    origin: true,
+    credentials: true,
+  });
+  await app.register(Cookie);
+  await app.register(Multipart, {
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
 
-
-// ─── Routes ────────────────────────────────────────────────────────────────
-
-app.use('/api/auth', Container.AuthController.Router);
-app.use('/api/interventions', Container.InterventionController.Router);
-app.use('/api/media', Container.MediaController.Router);
-app.use('/api/teams', Container.TeamController.Router);
-app.use('/api/operators', Container.OperatorController.Router);
-app.use('/api/Images', new ImagesController().Router);
-
-
-// ─── 404 Catch-All ─────────────────────────────────────────────────────────
-
-app.use((_req, _res, next) => {
-  next(new NotFoundError('Route not found'));
-});
+  app.addHook('onRequest', TrackRequestStart);
+  app.addHook('onRequest', API_LIMITER);
+  app.addHook('preValidation', PrototypePollutionGuard);
+  app.addHook('onResponse', RequestLogger);
 
 
-// ─── Error Handler ─────────────────────────────────────────────────────────
+  // ─── Health Check ───────────────────────────────────────────────────────
 
-app.use(ErrorHandler);
+  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
 
-export { app };
+  // ─── Routes ─────────────────────────────────────────────────────────────
+
+  await app.register(async (instance) => {
+    Container.AuthController.RegisterRoutes(instance);
+  }, { prefix: '/api/auth' });
+
+  await app.register(async (instance) => {
+    Container.InterventionController.RegisterRoutes(instance);
+  }, { prefix: '/api/interventions' });
+
+  await app.register(async (instance) => {
+    Container.MediaController.RegisterRoutes(instance);
+  }, { prefix: '/api/media' });
+
+  await app.register(async (instance) => {
+    Container.TeamController.RegisterRoutes(instance);
+  }, { prefix: '/api/teams' });
+
+  await app.register(async (instance) => {
+    Container.OperatorController.RegisterRoutes(instance);
+  }, { prefix: '/api/operators' });
+
+  await app.register(async (instance) => {
+    new ImagesController().RegisterRoutes(instance);
+  }, { prefix: '/api/Images' });
+
+
+  // ─── 404 / Error Handling ───────────────────────────────────────────────
+
+  app.setNotFoundHandler(async () => {
+    throw new NotFoundError('Route not found');
+  });
+
+  app.setErrorHandler(ErrorHandler);
+
+  return app;
+}

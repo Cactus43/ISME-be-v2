@@ -1,5 +1,5 @@
-import type { Response, NextFunction } from 'express';
-import type { IAuthenticatedRequest } from '../Data/Types/Express';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { IAuthenticatedRequest } from '../Data/Types/Http';
 import { AccessToken } from '../Data/Models/AccessToken';
 import { User } from '../Data/Models/User';
 import { JwtSignature } from '../Utils/Crypto';
@@ -16,14 +16,15 @@ import { JwtSignature } from '../Utils/Crypto';
 
 export function Authenticate(Source?: 'backoffice' | 'mobile') {
 
-  return async (req: IAuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const request = req as IAuthenticatedRequest;
 
     // ── Extract signature from transport (try both when no Source) ──
     let RawToken: string | undefined;
     let ResolvedSource: 'backoffice' | 'mobile' | undefined;
 
     if (!Source || Source === 'backoffice') {
-      const CookieValue = req.cookies?.['session'];
+      const CookieValue = request.cookies?.['session'];
       if (CookieValue) {
         RawToken = CookieValue;
         ResolvedSource = 'backoffice';
@@ -31,7 +32,7 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     }
 
     if (!RawToken && (!Source || Source === 'mobile')) {
-      const Header = req.headers.authorization;
+      const Header = request.headers.authorization;
       if (Header?.startsWith('Bearer ')) {
         RawToken = Header.slice(7);
         ResolvedSource = 'mobile';
@@ -39,8 +40,8 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     }
 
     if (!RawToken || !ResolvedSource) {
-      console.log('[Auth] 401 Authentication required |', req.method, req.originalUrl, '| authHeader:', req.headers.authorization?.slice(0, 30) ?? 'NONE', '| source:', Source ?? 'any');
-      res.status(401).json({ Error: 'Authentication required' });
+      console.log('[Auth] 401 Authentication required |', request.method, request.raw.url, '| authHeader:', request.headers.authorization?.slice(0, 30) ?? 'NONE', '| source:', Source ?? 'any');
+      reply.status(401).send({ Error: 'Authentication required' });
       return;
     }
 
@@ -48,8 +49,8 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     const Signature = JwtSignature(RawToken);
 
     if (!Signature) {
-      console.log('[Auth] 401 Malformed token |', req.method, req.originalUrl, '| tokenLen:', RawToken.length, '| parts:', RawToken.split('.').length);
-      res.status(401).json({ Error: 'Malformed token' });
+      console.log('[Auth] 401 Malformed token |', request.method, request.raw.url, '| tokenLen:', RawToken.length, '| parts:', RawToken.split('.').length);
+      reply.status(401).send({ Error: 'Malformed token' });
       return;
     }
 
@@ -72,25 +73,25 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     if (!TokenRecord || !TokenRecord.User) {
       // Diagnostic: check if the signature exists at all (maybe revoked or wrong source)
       const anyRecord = await AccessToken.findOne({ where: { signature: Signature }, attributes: ['id', 'source', 'revoked_at', 'expires_at'] });
-      console.log('[Auth] 401 Invalid or expired session |', req.method, req.originalUrl,
+      console.log('[Auth] 401 Invalid or expired session |', request.method, request.raw.url,
         '| sig:', Signature.slice(0, 12) + '...',
         '| resolvedSource:', ResolvedSource,
         '| anyRecordInDB:', anyRecord ? `id=${anyRecord.id} source=${anyRecord.source} revoked=${anyRecord.revoked_at} expires=${anyRecord.expires_at}` : 'NONE');
-      res.status(401).json({ Error: 'Invalid or expired session' });
+      reply.status(401).send({ Error: 'Invalid or expired session' });
       return;
     }
 
     if (new Date(TokenRecord.expires_at) < new Date()) {
-      console.log('[Auth] 401 Session expired |', req.method, req.originalUrl,
+      console.log('[Auth] 401 Session expired |', request.method, request.raw.url,
         '| sig:', Signature.slice(0, 12) + '...',
         '| expiresAt:', TokenRecord.expires_at,
         '| now:', new Date().toISOString());
-      res.status(401).json({ Error: 'Session expired' });
+      reply.status(401).send({ Error: 'Session expired' });
       return;
     }
 
     // ── Populate request context (unified for both flows) ──
-    req.User = {
+    request.User = {
       Id: TokenRecord.User.id,
       Firstname: TokenRecord.User.firstname,
       Lastname: TokenRecord.User.lastname,
@@ -101,11 +102,9 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
       Lang: TokenRecord.User.lang,
     };
 
-    req.AuthSource = ResolvedSource;
-    req.RawToken = RawToken;
-    req.RawTokenSignature = Signature;
-
-    next();
+    request.AuthSource = ResolvedSource;
+    request.RawToken = RawToken;
+    request.RawTokenSignature = Signature;
   };
 }
 
@@ -117,17 +116,17 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
 
 export function RequireRole(...Roles: Array<'admin' | 'viewer' | 'operator'>) {
 
-  return (req: IAuthenticatedRequest, res: Response, next: NextFunction): void => {
-    if (!req.User) {
-      res.status(401).json({ Error: 'Authentication required' });
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const request = req as IAuthenticatedRequest;
+
+    if (!request.User) {
+      reply.status(401).send({ Error: 'Authentication required' });
       return;
     }
 
-    if (!Roles.includes(req.User.Role)) {
-      res.status(403).json({ Error: 'Insufficient permissions' });
+    if (!Roles.includes(request.User.Role)) {
+      reply.status(403).send({ Error: 'Insufficient permissions' });
       return;
     }
-
-    next();
   };
 }

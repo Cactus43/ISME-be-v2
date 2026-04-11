@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { FastifyRequest } from 'fastify';
 import { BadRequestError } from '../Data/Exceptions/Index';
 
 
@@ -36,25 +36,19 @@ function FindUnsafePath(value: unknown, path: string[] = []): string | null {
 /**
  * Blocks payloads that attempt prototype pollution through reserved object keys.
  */
-export function PrototypePollutionGuard(req: Request, _res: Response, next: NextFunction): void {
-  try {
-    const bodyPath = FindUnsafePath(req.body, ['body']);
-    if (bodyPath) {
-      throw new BadRequestError(`Blocked unsafe key in request payload at ${bodyPath}`);
-    }
+export async function PrototypePollutionGuard(req: FastifyRequest): Promise<void> {
+  const bodyPath = FindUnsafePath(req.body, ['body']);
+  if (bodyPath) {
+    throw new BadRequestError(`Blocked unsafe key in request payload at ${bodyPath}`);
+  }
 
-    const queryPath = FindUnsafePath(req.query as unknown, ['query']);
-    if (queryPath) {
-      throw new BadRequestError(`Blocked unsafe key in request payload at ${queryPath}`);
-    }
+  const queryPath = FindUnsafePath(req.query as unknown, ['query']);
+  if (queryPath) {
+    throw new BadRequestError(`Blocked unsafe key in request payload at ${queryPath}`);
+  }
 
-    const paramsPath = FindUnsafePath(req.params as unknown, ['params']);
-    if (paramsPath) {
-      throw new BadRequestError(`Blocked unsafe key in request payload at ${paramsPath}`);
-    }
-
-    next();
-  } catch (err) {
-    next(err);
+  const paramsPath = FindUnsafePath(req.params as unknown, ['params']);
+  if (paramsPath) {
+    throw new BadRequestError(`Blocked unsafe key in request payload at ${paramsPath}`);
   }
 }

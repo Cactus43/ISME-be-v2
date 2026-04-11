@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../Data/Exceptions/Index';
 import { Logger } from '../Utils/Logger';
 import { Config } from '../Config/Index';
@@ -7,14 +7,12 @@ import { Config } from '../Config/Index';
 // ─── Error Handler ─────────────────────────────────────────────────────────
 
 /**
- * Global error handler middleware.
- * Must be registered LAST in the Express middleware chain.
+ * Global error handler.
  */
 export function ErrorHandler(
   err: Error | AppError,
-  _req: Request,
-  res: Response,
-  _next: NextFunction,
+  _req: FastifyRequest,
+  reply: FastifyReply,
 ): void {
 
   if (err instanceof AppError) {
@@ -24,7 +22,7 @@ export function ErrorHandler(
       Logger.warn({ statusCode: err.StatusCode }, err.message);
     }
 
-    res.status(err.StatusCode).json({ status: 'error', message: err.message });
+    reply.status(err.StatusCode).send({ status: 'error', message: err.message });
     return;
   }
 
@@ -35,7 +33,7 @@ export function ErrorHandler(
     ? 'Internal Server Error'
     : err.message || 'Internal Server Error';
 
-  res.status(statusCode).json({
+  reply.status(statusCode).send({
     status: 'error',
     message,
     ...(Config.Env !== 'production' && { stack: err.stack }),

@@ -357,7 +357,7 @@ export class InterventionOperations implements IInterventionOperations {
       }
     }
 
-    matrix.forEach((line, index) => {
+    matrix.forEach((line) => {
       const rowRef = ws.addRow(line);
 
       if (priorityColumnIndex < 0) return;

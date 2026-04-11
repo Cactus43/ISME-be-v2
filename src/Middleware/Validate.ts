@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { FastifyRequest } from 'fastify';
 import { ZodSchema } from 'zod';
 import { BadRequestError } from '../Data/Exceptions/Index';
 
@@ -7,38 +7,28 @@ import { BadRequestError } from '../Data/Exceptions/Index';
 
 /** Validates `req.body` against the given Zod schema. */
 export function Validate(schema: ZodSchema) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    try {
-      const result = schema.safeParse(req.body);
+  return async (req: FastifyRequest): Promise<void> => {
+    const result = schema.safeParse(req.body);
 
-      if (!result.success) {
-        const message = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-        throw new BadRequestError(`Validation failed — ${message}`);
-      }
-
-      req.body = result.data;
-      next();
-    } catch (err) {
-      next(err);
+    if (!result.success) {
+      const message = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+      throw new BadRequestError(`Validation failed — ${message}`);
     }
+
+    ;(req as FastifyRequest & { body: unknown }).body = result.data;
   };
 }
 
 /** Validates `req.query` against the given Zod schema. */
 export function ValidateQuery(schema: ZodSchema) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    try {
-      const result = schema.safeParse(req.query);
+  return async (req: FastifyRequest): Promise<void> => {
+    const result = schema.safeParse(req.query);
 
-      if (!result.success) {
-        const message = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-        throw new BadRequestError(`Query validation failed — ${message}`);
-      }
-
-      req.query = result.data;
-      next();
-    } catch (err) {
-      next(err);
+    if (!result.success) {
+      const message = result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+      throw new BadRequestError(`Query validation failed — ${message}`);
     }
+
+    ;(req as FastifyRequest & { query: unknown }).query = result.data;
   };
 }

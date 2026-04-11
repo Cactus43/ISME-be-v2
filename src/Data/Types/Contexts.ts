@@ -1,4 +1,4 @@
-import type { IAuthenticatedRequest } from './Express';
+import type { IAuthenticatedRequest } from './Http';
 
 
 // ─── RequestContext ────────────────────────────────────────────────────────
@@ -22,15 +22,17 @@ export interface RequestContext {
 export const RequestContext = {
 
   /**
-   * Build a RequestContext from an authenticated Express request.
+   * Build a RequestContext from an authenticated HTTP request.
    */
   FromRequest(req: IAuthenticatedRequest): RequestContext {
+    const userAgent = req.headers['user-agent'];
+
     return {
       UserId: req.User?.Id ?? null,
       DeviceId: null,
       IpAddress: req.ip || req.socket?.remoteAddress || null,
       AuthSource: req.AuthSource ?? null,
-      UserAgent: req.headers?.['user-agent'],
+      UserAgent: Array.isArray(userAgent) ? userAgent.join(', ') : userAgent,
     };
   },
 

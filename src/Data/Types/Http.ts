@@ -1,16 +1,10 @@
-import { Request } from 'express';
+import type { FastifyRequest } from 'fastify';
 
 
 // ─── Authenticated Request ─────────────────────────────────────────────────
 
-/**
- * Extended Express Request with authenticated user context.
- * Unified: both backoffice and mobile auth set req.User.
- * Set by the Authenticate middleware.
- */
-export interface IAuthenticatedRequest extends Request {
+export interface IAuthenticatedRequest extends FastifyRequest {
 
-  /** Authenticated user (any role — admin, viewer, operator) */
   User?: {
     Id: number;
     Firstname: string;
@@ -22,12 +16,7 @@ export interface IAuthenticatedRequest extends Request {
     Lang: string;
   };
 
-  /** Raw JWT token string */
   RawToken?: string;
-
-  /** JWT signature (last segment) */
   RawTokenSignature?: string;
-
-  /** Auth source channel */
   AuthSource?: 'backoffice' | 'mobile';
 }
