@@ -2,6 +2,8 @@ import { Config } from './Config/Index';
 import { Logger } from './Utils/Logger';
 import { ConnectDatabase, Sequelize } from './Infra/Database';
 import { BuildApp } from './App';
+import { Container } from './Infra/Container';
+import { WeeklyJob } from './Infra/WeeklyJob';
 
 
 // ─── Bootstrap ─────────────────────────────────────────────────────────────
@@ -11,14 +13,20 @@ async function Main(): Promise<void> {
     Logger.info(`Starting ISME v2 [${Config.Env}]`);
 
     await ConnectDatabase();
+    await Container.InterventionAdapter.EnsurePriorityTrackingSchema();
     const app = await BuildApp();
 
     const address = await app.listen({ port: Config.Port, host: '0.0.0.0' });
     Logger.info(`Server listening on ${address}`);
 
+    // ─── Weekly Job ──────────────────────────────────────────────────────
+    const job = new WeeklyJob(Container.InterventionAdapter, Logger);
+    job.Start();
+
     // ─── Graceful Shutdown ───────────────────────────────────────────────
     const _shutdown = async (signal: string) => {
       Logger.info(`Received ${signal}, shutting down gracefully...`);
+      job.Stop();
 
       try {
         await app.close();

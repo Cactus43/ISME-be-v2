@@ -8,7 +8,7 @@ export interface UserAttributes {
   email: string | null;
   username: string | null;
   password: string;
-  role: 'admin' | 'viewer' | 'operator';
+  role: 'admin' | 'approval_manager' | 'execution_manager' | 'operator';
   team_id: number | null;
   lang: string;
   is_active: boolean;
@@ -33,7 +33,7 @@ export class User extends Model<UserAttributes, UserCreation> implements UserAtt
   declare email: string | null;
   declare username: string | null;
   declare password: string;
-  declare role: 'admin' | 'viewer' | 'operator';
+  declare role: 'admin' | 'approval_manager' | 'execution_manager' | 'operator';
   declare team_id: number | null;
   declare lang: string;
   declare is_active: boolean;
@@ -56,7 +56,7 @@ export class User extends Model<UserAttributes, UserCreation> implements UserAtt
         email:      { type: DataTypes.STRING(128), allowNull: true, unique: true },
         username:   { type: DataTypes.STRING(128), allowNull: true, unique: true },
         password:   { type: DataTypes.STRING(255), allowNull: false },
-        role:       { type: DataTypes.ENUM('admin', 'viewer', 'operator'), allowNull: false, defaultValue: 'viewer' },
+        role:       { type: DataTypes.ENUM('admin', 'approval_manager', 'execution_manager', 'operator', 'viewer'), allowNull: false, defaultValue: 'operator' },
         team_id:    { type: DataTypes.BIGINT.UNSIGNED, allowNull: true },
         lang:       { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'eng' },
         is_active:  { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },

@@ -137,3 +137,34 @@ export const TOGGLE_DELETE_SCHEMA = z.object({
 });
 
 export type ToggleDeleteInput = z.infer<typeof TOGGLE_DELETE_SCHEMA>;
+
+
+// ─── Weekly Priority Tracking ─────────────────────────────────────────────
+
+export const PRIORITY_TRACKING_QUERY_SCHEMA = z.object({
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export const MOBILE_SYNC_PULL_QUERY_SCHEMA = z.object({
+  updatedAfter: z.string().optional(),
+  cursor: z.string().optional(),
+  syncPoint: z.string().optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+});
+
+export const PRIORITY_TRACKING_UPDATE_SCHEMA = z.object({
+  selection: z.boolean().optional(),
+  ps9: z.boolean().optional(),
+  po: z.boolean().optional(),
+  workPermit: z.boolean().optional(),
+  rationale: z.enum([
+    'Mancanza Operatore',
+    'Difficolta Intercetto',
+    'Mancanza materiali',
+    'Permesso non aperto',
+  ]).nullable().optional(),
+});
+
+export type PriorityTrackingQuery = z.infer<typeof PRIORITY_TRACKING_QUERY_SCHEMA>;
+export type PriorityTrackingUpdateInput = z.infer<typeof PRIORITY_TRACKING_UPDATE_SCHEMA>;
+export type MobileSyncPullQuery = z.infer<typeof MOBILE_SYNC_PULL_QUERY_SCHEMA>;

@@ -11,7 +11,7 @@ export interface IAuthenticatedRequest extends FastifyRequest {
     Lastname: string;
     Email: string | null;
     Username: string | null;
-    Role: 'admin' | 'viewer' | 'operator';
+    Role: 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | 'viewer';
     TeamId: number | null;
     Lang: string;
   };

@@ -3,7 +3,7 @@ import type { IAuthenticatedRequest } from '../Data/Types/Http';
 import type { IOperatorOperations } from '../Data/Interfaces/IOperations';
 import { RequestContext } from '../Data/Types/Contexts';
 import { CREATE_OPERATOR_SCHEMA, UPDATE_OPERATOR_SCHEMA, type CreateOperatorInput, type UpdateOperatorInput } from '../Data/Schemas/Operator';
-import { Authenticate } from '../Middleware/Authenticate';
+import { Authenticate, RequireRole } from '../Middleware/Authenticate';
 import { Validate } from '../Middleware/Validate';
 import { ParseId } from '../Utils/ParseId';
 
@@ -27,9 +27,9 @@ export class OperatorController {
   public RegisterRoutes(app: FastifyInstance): void {
     app.get('/', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.GetAll));
     app.get('/:id', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.GetById));
-    app.post('/', { preHandler: [Authenticate('backoffice'), Validate(CREATE_OPERATOR_SCHEMA)] }, this.Handle(this.Create));
-    app.put('/:id', { preHandler: [Authenticate('backoffice'), Validate(UPDATE_OPERATOR_SCHEMA)] }, this.Handle(this.Update));
-    app.delete('/:id', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.Delete));
+    app.post('/', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(CREATE_OPERATOR_SCHEMA)] }, this.Handle(this.Create));
+    app.put('/:id', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(UPDATE_OPERATOR_SCHEMA)] }, this.Handle(this.Update));
+    app.delete('/:id', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager')] }, this.Handle(this.Delete));
   }
 
   private Handle(handler: ControllerHandler) {

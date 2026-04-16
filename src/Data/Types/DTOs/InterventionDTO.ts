@@ -67,6 +67,7 @@ export interface InterventionDTO {
   // Audit
   CreatedBy: number | null;
   UpdatedBy: number | null;
+  RowVersion: number;
   DeletedAt: Date | null;
   DeletedBy: number | null;
   UpdatedAt: Date;
@@ -139,6 +140,7 @@ export const InterventionDTO = {
       Reason: m.reason,
       CreatedBy: m.created_by,
       UpdatedBy: m.updated_by,
+      RowVersion: Number(m.row_version ?? 0),
       DeletedAt: m.deleted_at,
       DeletedBy: m.deleted_by,
       UpdatedAt: m.updated_at,

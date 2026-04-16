@@ -68,6 +68,10 @@ export async function BuildApp(): Promise<FastifyInstance> {
   }, { prefix: '/api/operators' });
 
   await app.register(async (instance) => {
+    Container.UnitController.RegisterRoutes(instance);
+  }, { prefix: '/api/units' });
+
+  await app.register(async (instance) => {
     new ImagesController().RegisterRoutes(instance);
   }, { prefix: '/api/Images' });
 

@@ -67,6 +67,7 @@ export interface InterventionAttributes {
   created_by: number | null;
   updated_at: Date;
   updated_by: number | null;
+  row_version: number;
   deleted_at: Date | null;
   deleted_by: number | null;
 }
@@ -83,7 +84,7 @@ type InterventionCreation = Optional<
   | 'trait_length' | 'asbestos'
   | 'notification' | 'closure_notification'
   | 'repair_date' | 'intervention_description' | 'post_date' | 'reason'
-  | 'created_at' | 'created_by' | 'updated_at' | 'updated_by' | 'deleted_at' | 'deleted_by'
+  | 'created_at' | 'created_by' | 'updated_at' | 'updated_by' | 'row_version' | 'deleted_at' | 'deleted_by'
 >;
 
 /* ─── Sequelize model ─────────────────────────────────────────── */
@@ -133,6 +134,7 @@ export class Intervention extends Model<InterventionAttributes, InterventionCrea
   declare created_by: number | null;
   declare readonly updated_at: Date;
   declare updated_by: number | null;
+  declare row_version: number;
   declare deleted_at: Date | null;
   declare deleted_by: number | null;
 
@@ -188,6 +190,7 @@ export class Intervention extends Model<InterventionAttributes, InterventionCrea
         created_by:                      { type: DataTypes.BIGINT.UNSIGNED, allowNull: true },
         updated_at:                      { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
         updated_by:                      { type: DataTypes.BIGINT.UNSIGNED, allowNull: true },
+        row_version:                     { type: DataTypes.BIGINT.UNSIGNED, allowNull: false, defaultValue: 0 },
         deleted_at:                      { type: DataTypes.DATE, allowNull: true, defaultValue: null },
         deleted_by:                      { type: DataTypes.BIGINT.UNSIGNED, allowNull: true },
       },

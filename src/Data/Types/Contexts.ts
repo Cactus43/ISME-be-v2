@@ -9,6 +9,7 @@ import type { IAuthenticatedRequest } from './Http';
  */
 export interface RequestContext {
   UserId: number | null;
+  UserRole: 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | null;
   DeviceId: number | null;
   IpAddress: string | null;
   AuthSource: 'backoffice' | 'mobile' | null;
@@ -29,6 +30,7 @@ export const RequestContext = {
 
     return {
       UserId: req.User?.Id ?? null,
+      UserRole: req.User?.Role ?? null,
       DeviceId: null,
       IpAddress: req.ip || req.socket?.remoteAddress || null,
       AuthSource: req.AuthSource ?? null,
@@ -42,6 +44,7 @@ export const RequestContext = {
   System(): RequestContext {
     return {
       UserId: null,
+      UserRole: null,
       DeviceId: null,
       IpAddress: null,
       AuthSource: null,

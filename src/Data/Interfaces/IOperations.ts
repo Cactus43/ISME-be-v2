@@ -9,14 +9,18 @@ import type { BackofficeLoginResult, BackofficeSessionResult, MobileLoginResult,
 import type { OperationResult } from '../Types/OperationResult';
 import type { PaginatedResult } from '../Types/Pagination';
 import type { RequestContext } from '../Types/Contexts';
+import type { PriorityTrackingWeekResult } from './IAdapter';
+import type { PriorityTrackingTimelineResult } from './IAdapter';
 import type { InterventionDTO } from '../Types/DTOs/InterventionDTO';
 import type { TeamDTO } from '../Types/DTOs/TeamDTO';
+import type { UnitDTO } from '../Types/DTOs/UnitDTO';
 import type { OperatorDTO } from '../Types/DTOs/OperatorDTO';
 import type { MediaDTO } from '../Types/DTOs/MediaDTO';
 import type { MediaSlot, UploadedMediaFile } from '../Types/Media';
 import type { LoginInput, MobileLoginInput } from '../Schemas/Auth';
 import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput } from '../Schemas/Intervention';
 import type { CreateTeamInput, UpdateTeamInput } from '../Schemas/Team';
+import type { CreateUnitInput, UpdateUnitInput } from '../Schemas/Unit';
 import type { CreateOperatorInput, UpdateOperatorInput } from '../Schemas/Operator';
 
 export interface ExportCsvOptions {
@@ -36,6 +40,21 @@ export interface ExportExcelOptions {
   AutoFilter?: boolean;
   Ids?: number[];
   Columns?: string[];
+}
+
+export interface MobileSyncPullDTO {
+  Items: InterventionDTO[];
+  DeletedIds: number[];
+  HasMore: boolean;
+  NextCursor: string | null;
+  SyncPoint: string;
+}
+
+export interface MobileSyncPullRequest {
+  UpdatedAfter: Date | null;
+  SyncPoint: Date;
+  Cursor: string | null;
+  Limit: number;
 }
 
 
@@ -60,13 +79,22 @@ export interface IInterventionOperations {
   GetStats(): Promise<OperationResult<import('../Interfaces/IAdapter').DashboardStats>>;
   GetAllForDashboard(interventionType?: number): Promise<OperationResult<InterventionDTO[]>>;
   GetChartBundle(filters: { interventionType?: number; year?: number; dateFrom?: string; dateTo?: string; steamPrice?: number; timeFrame?: string }): Promise<OperationResult<import('../../Utils/ChartEngine').ChartBundle>>;
-  GetAllForMobile(teamCode: string): Promise<OperationResult<InterventionDTO[]>>;
+  GetAllForMobile(teamCode: string, options: MobileSyncPullRequest): Promise<OperationResult<MobileSyncPullDTO>>;
   Create(input: CreateInterventionInput, context: RequestContext): Promise<OperationResult<InterventionDTO>>;
   Update(id: number, input: UpdateInterventionInput, context: RequestContext): Promise<OperationResult<InterventionDTO>>;
   ToggleDelete(input: ToggleDeleteInput, context: RequestContext): Promise<OperationResult<{ Affected: number }>>;
+  GetPriorityTrackingWeek(weekStart: Date, weekEnd: Date): Promise<OperationResult<PriorityTrackingWeekResult>>;
+  GetPriorityTrackingTimeline(weekStart: Date, weekEnd: Date): Promise<OperationResult<PriorityTrackingTimelineResult>>;
+  UpdatePriorityTrackingItem(itemId: number, patch: {
+    selection?: boolean;
+    ps9?: boolean;
+    po?: boolean;
+    workPermit?: boolean;
+    rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+  }, context: RequestContext): Promise<OperationResult<void>>;
   ExportCsv(teamCode?: string, options?: ExportCsvOptions): Promise<OperationResult<string>>;
   ExportExcel(teamCode?: string, options?: ExportExcelOptions): Promise<OperationResult<Buffer>>;
-  SyncFromMobile(interventions: any[], context: RequestContext): Promise<OperationResult<Record<string, number | 'delete'>>>;
+  SyncFromMobile(interventions: any[], context: RequestContext): Promise<OperationResult<Record<string, number | 'conflict'>>>;
 }
 
 
@@ -87,6 +115,17 @@ export interface ITeamOperations {
   GetById(id: number): Promise<OperationResult<TeamDTO>>;
   Create(input: CreateTeamInput, context: RequestContext): Promise<OperationResult<TeamDTO>>;
   Update(id: number, input: UpdateTeamInput, context: RequestContext): Promise<OperationResult<TeamDTO>>;
+  Delete(id: number, context: RequestContext): Promise<OperationResult<void>>;
+}
+
+
+// ─── IUnitOperations ───────────────────────────────────────────────────────
+
+export interface IUnitOperations {
+  GetAll(): Promise<OperationResult<UnitDTO[]>>;
+  GetById(id: number): Promise<OperationResult<UnitDTO>>;
+  Create(input: CreateUnitInput, context: RequestContext): Promise<OperationResult<UnitDTO>>;
+  Update(id: number, input: UpdateUnitInput, context: RequestContext): Promise<OperationResult<UnitDTO>>;
   Delete(id: number, context: RequestContext): Promise<OperationResult<void>>;
 }
 

@@ -7,12 +7,18 @@ import {
   CREATE_INTERVENTION_SCHEMA,
   UPDATE_INTERVENTION_SCHEMA,
   LIST_INTERVENTIONS_QUERY_SCHEMA,
+  MOBILE_SYNC_PULL_QUERY_SCHEMA,
+  PRIORITY_TRACKING_QUERY_SCHEMA,
+  PRIORITY_TRACKING_UPDATE_SCHEMA,
   TOGGLE_DELETE_SCHEMA,
   type CreateInterventionInput,
+  type PriorityTrackingQuery,
+  type PriorityTrackingUpdateInput,
+  type MobileSyncPullQuery,
   type UpdateInterventionInput,
   type ToggleDeleteInput,
 } from '../Data/Schemas/Intervention';
-import { Authenticate } from '../Middleware/Authenticate';
+import { Authenticate, RequireRole } from '../Middleware/Authenticate';
 import { Validate, ValidateQuery } from '../Middleware/Validate';
 import { ParseId } from '../Utils/ParseId';
 import type { ExportCsvOptions, ExportExcelOptions } from '../Data/Interfaces/IOperations';
@@ -41,16 +47,25 @@ export class InterventionController {
     app.get('/recent', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.Recent));
     app.get('/dashboard/charts', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.DashboardCharts));
     app.get('/dashboard', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.Dashboard));
+    app.get('/priority-tracking', {
+      preHandler: [Authenticate('backoffice'), ValidateQuery(PRIORITY_TRACKING_QUERY_SCHEMA)],
+    }, this.Handle(this.GetPriorityTrackingWeek));
+    app.get('/priority-tracking/timeline', {
+      preHandler: [Authenticate('backoffice'), ValidateQuery(PRIORITY_TRACKING_QUERY_SCHEMA)],
+    }, this.Handle(this.GetPriorityTrackingTimeline));
+    app.put('/priority-tracking/items/:id', {
+      preHandler: [Authenticate('backoffice'), RequireRole('admin', 'approval_manager', 'execution_manager'), Validate(PRIORITY_TRACKING_UPDATE_SCHEMA)],
+    }, this.Handle(this.UpdatePriorityTrackingItem));
 
     app.get('/', { preHandler: [Authenticate('backoffice'), ValidateQuery(LIST_INTERVENTIONS_QUERY_SCHEMA)] }, this.Handle(this.List));
     app.get('/export/csv', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.ExportCsv));
     app.get('/export/excel', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.ExportExcel));
     app.get('/:id', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.GetById));
-    app.post('/', { preHandler: [Authenticate(), Validate(CREATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Create));
-    app.put('/:id', { preHandler: [Authenticate('backoffice'), Validate(UPDATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Update));
-    app.post('/toggle-delete', { preHandler: [Authenticate('backoffice'), Validate(TOGGLE_DELETE_SCHEMA)] }, this.Handle(this.ToggleDelete));
+    app.post('/', { preHandler: [Authenticate(), RequireRole('admin', 'execution_manager'), Validate(CREATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Create));
+    app.put('/:id', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(UPDATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Update));
+    app.post('/toggle-delete', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(TOGGLE_DELETE_SCHEMA)] }, this.Handle(this.ToggleDelete));
 
-    app.get('/mobile/sync', { preHandler: [Authenticate('mobile')] }, this.Handle(this.MobileSync));
+    app.get('/mobile/sync', { preHandler: [Authenticate('mobile'), ValidateQuery(MOBILE_SYNC_PULL_QUERY_SCHEMA)] }, this.Handle(this.MobileSync));
     app.post('/mobile/sync', { preHandler: [Authenticate('mobile')] }, this.Handle(this.MobileSyncUpload));
   }
 
@@ -112,6 +127,31 @@ export class InterventionController {
     reply.send({ status: 'ok', data: result.Data });
   }
 
+  private async GetPriorityTrackingWeek(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
+    const query = req.query as PriorityTrackingQuery;
+    const WeekStart = new Date(`${query.weekStart}T00:00:00`);
+    const WeekEnd = new Date(WeekStart);
+    WeekEnd.setDate(WeekStart.getDate() + 6);
+    const result = await this._ops.GetPriorityTrackingWeek(WeekStart, WeekEnd);
+    reply.send({ status: 'ok', data: result.Data });
+  }
+
+  private async GetPriorityTrackingTimeline(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
+    const query = req.query as PriorityTrackingQuery;
+    const WeekStart = new Date(`${query.weekStart}T00:00:00`);
+    const WeekEnd = new Date(WeekStart);
+    WeekEnd.setDate(WeekStart.getDate() + 6);
+    const result = await this._ops.GetPriorityTrackingTimeline(WeekStart, WeekEnd);
+    reply.send({ status: 'ok', data: result.Data });
+  }
+
+  private async UpdatePriorityTrackingItem(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
+    const context = RequestContext.FromRequest(req);
+    const itemId = ParseId((req.params as Record<string, string>).id);
+    await this._ops.UpdatePriorityTrackingItem(itemId, req.body as PriorityTrackingUpdateInput, context);
+    reply.send({ status: 'ok', data: { Updated: true } });
+  }
+
   private async GetById(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
     const result = await this._ops.GetById(ParseId((req.params as Record<string, string>).id));
     reply.send({ status: 'ok', data: result.Data });
@@ -128,7 +168,19 @@ export class InterventionController {
       teamCode = team?.code ?? '';
     }
 
-    const result = await this._ops.GetAllForMobile(teamCode);
+    const query = req.query as MobileSyncPullQuery
+    const limitRaw = query.limit ? Number(query.limit) : 300
+    const limit = Number.isFinite(limitRaw) ? Math.max(50, Math.min(1000, limitRaw)) : 300
+
+    const updatedAfter = query.updatedAfter ? new Date(query.updatedAfter) : null
+    const syncPoint = query.syncPoint ? new Date(query.syncPoint) : new Date()
+
+    const result = await this._ops.GetAllForMobile(teamCode, {
+      UpdatedAfter: updatedAfter && !Number.isNaN(updatedAfter.getTime()) ? updatedAfter : null,
+      SyncPoint: !Number.isNaN(syncPoint.getTime()) ? syncPoint : new Date(),
+      Cursor: query.cursor ?? null,
+      Limit: limit,
+    });
     reply.send({ status: 'ok', data: result.Data });
   }
 

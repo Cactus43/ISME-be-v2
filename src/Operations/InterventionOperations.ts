@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import ExcelJS from 'exceljs';
 import type { Logger } from 'pino';
 import type { IInterventionAdapter, IMediaAdapter, DashboardStats } from '../Data/Interfaces/IAdapter';
-import type { ExportCsvOptions, ExportExcelOptions, IInterventionOperations } from '../Data/Interfaces/IOperations';
+import type { ExportCsvOptions, ExportExcelOptions, IInterventionOperations, MobileSyncPullDTO, MobileSyncPullRequest } from '../Data/Interfaces/IOperations';
 import type { InterventionAttributes } from '../Data/Models/Intervention';
 import type { PaginatedResult } from '../Data/Types/Pagination';
 import type { RequestContext } from '../Data/Types/Contexts';
@@ -20,6 +20,38 @@ import { Sequelize } from '../Infra/Database';
 import type { EventBus } from '../Infra/EventBus';
 import type { MediaSlot } from '../Data/Types/Media';
 import { BuildMediaStorageTarget, DecodeBase64Image } from '../Utils/MediaStorage';
+
+
+function ToLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function GetCurrentMonday(d: Date): Date {
+  const day = d.getDay();
+  const shift = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + shift);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function ParseMobileSyncCursor(cursor: string | null): { UpdatedAt: Date; Id: number } | null {
+  if (!cursor) return null
+  const [UpdatedAtRaw, IdRaw] = cursor.split('|')
+  if (!UpdatedAtRaw || !IdRaw) return null
+
+  const UpdatedAt = new Date(UpdatedAtRaw)
+  const Id = Number(IdRaw)
+  if (Number.isNaN(UpdatedAt.getTime()) || !Number.isFinite(Id) || Id <= 0) return null
+  return { UpdatedAt, Id }
+}
+
+function BuildMobileSyncCursor(updatedAt: Date, id: number): string {
+  return `${updatedAt.toISOString()}|${id}`
+}
 
 
 // ─── InterventionOperations ────────────────────────────────────────────────
@@ -127,9 +159,27 @@ export class InterventionOperations implements IInterventionOperations {
 
   // ─── Get all for mobile sync ──────────────────────────────────────
 
-  async GetAllForMobile(teamCode: string): Promise<OperationResult<InterventionDTO[]>> {
-    const rows = await this._interventionAdapter.FindAllForMobile(teamCode);
-    return OperationResult.Ok(rows.map(InterventionDTO.FromModel));
+  async GetAllForMobile(teamCode: string, options: MobileSyncPullRequest): Promise<OperationResult<MobileSyncPullDTO>> {
+    const Delta = await this._interventionAdapter.FindMobileSyncDelta(teamCode, {
+      UpdatedAfter: options.UpdatedAfter,
+      SyncPoint: options.SyncPoint,
+      Cursor: ParseMobileSyncCursor(options.Cursor),
+      Limit: options.Limit,
+    })
+    const Items = Delta.Items.map(InterventionDTO.FromModel)
+
+    const Last = Delta.Items.length > 0 ? Delta.Items[Delta.Items.length - 1] : null
+    const NextCursor = Last
+      ? BuildMobileSyncCursor(Last.updated_at, Last.id)
+      : null
+
+    return OperationResult.Ok({
+      Items,
+      DeletedIds: Delta.DeletedIds,
+      HasMore: Delta.HasMore,
+      NextCursor,
+      SyncPoint: options.SyncPoint.toISOString(),
+    })
   }
 
 
@@ -277,6 +327,66 @@ export class InterventionOperations implements IInterventionOperations {
     return OperationResult.Ok({ Affected: affected });
   }
 
+  async GetPriorityTrackingWeek(weekStart: Date, weekEnd: Date) {
+    const CurrentWeekStart = GetCurrentMonday(new Date());
+    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
+      throw new BadRequestError('Future priority-tracking weeks are not allowed');
+    }
+    const data = await this._interventionAdapter.GetPriorityTrackingWeek(weekStart);
+    return OperationResult.Ok(data);
+  }
+
+  async GetPriorityTrackingTimeline(weekStart: Date, weekEnd: Date) {
+    const CurrentWeekStart = GetCurrentMonday(new Date());
+    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
+      throw new BadRequestError('Future priority-tracking weeks are not allowed');
+    }
+    const data = await this._interventionAdapter.GetPriorityTrackingTimeline(weekStart);
+    return OperationResult.Ok(data);
+  }
+
+  async UpdatePriorityTrackingItem(
+    itemId: number,
+    patch: {
+      selection?: boolean;
+      ps9?: boolean;
+      po?: boolean;
+      workPermit?: boolean;
+      rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+    },
+    context: RequestContext,
+  ): Promise<OperationResult<void>> {
+    const Role = context.UserRole;
+    if (!Role) throw new BadRequestError('Missing role');
+
+    const CanApproval = Role === 'admin' || Role === 'approval_manager';
+    const CanExecution = Role === 'admin' || Role === 'execution_manager';
+
+    const AdapterPatch: {
+      Selection?: boolean;
+      PS9?: boolean;
+      PO?: boolean;
+      WorkPermit?: boolean;
+      Rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+    } = {};
+
+    if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined) {
+      if (!CanApproval) throw new BadRequestError('Insufficient permissions for approval fields');
+      if (patch.selection !== undefined) AdapterPatch.Selection = patch.selection;
+      if (patch.ps9 !== undefined) AdapterPatch.PS9 = patch.ps9;
+      if (patch.po !== undefined) AdapterPatch.PO = patch.po;
+      if (patch.workPermit !== undefined) AdapterPatch.WorkPermit = patch.workPermit;
+    }
+
+    if (patch.rationale !== undefined) {
+      if (!CanExecution) throw new BadRequestError('Insufficient permissions for rationale');
+      AdapterPatch.Rationale = patch.rationale;
+    }
+
+    await this._interventionAdapter.UpdatePriorityTrackingItem(itemId, AdapterPatch);
+    return OperationResult.Void();
+  }
+
 
   // ─── Export CSV ───────────────────────────────────────────────────
 
@@ -403,8 +513,8 @@ export class InterventionOperations implements IInterventionOperations {
   async SyncFromMobile(
     interventions: any[],
     context: RequestContext,
-  ): Promise<OperationResult<Record<string, number | 'delete'>>> {
-    const idMap: Record<string, number | 'delete'> = {};
+  ): Promise<OperationResult<Record<string, number | 'conflict'>>> {
+    const idMap: Record<string, number | 'conflict'> = {};
 
     for (const item of interventions) {
       const localId = String(item.id ?? '');
@@ -415,13 +525,6 @@ export class InterventionOperations implements IInterventionOperations {
         if (serverId) {
           const existing = await this._interventionAdapter.FindById(serverId);
           if (existing) {
-            // Check if marked for deletion
-            if (item._deleted || item.deleted) {
-              await this._interventionAdapter.ToggleDelete([serverId], true);
-              idMap[localId] = 'delete';
-              continue;
-            }
-
             // Update existing
             const updateData: Partial<InterventionAttributes> = {};
             if (item.tag !== undefined) updateData.tag = item.tag;
@@ -450,7 +553,25 @@ export class InterventionOperations implements IInterventionOperations {
               }
             }
 
-            await this._interventionAdapter.Update(serverId, updateData);
+            const ExpectedRowVersion = typeof item.row_version === 'number'
+              ? Number(item.row_version)
+              : undefined
+
+            const Updated = await this._interventionAdapter.Update(serverId, updateData, undefined, ExpectedRowVersion)
+            if (!Updated) {
+              idMap[localId] = 'conflict'
+              continue
+            }
+
+            const NextStatus = updateData.status ?? existing.status;
+            const NextRepairDate = updateData.repair_date !== undefined
+              ? updateData.repair_date
+              : existing.repair_date;
+            const IsClosed = Number(NextStatus) !== 1 || NextRepairDate != null;
+            if (IsClosed) {
+              await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(serverId);
+            }
+
             if (fotoPerdita) {
               await this._savePhoto(serverId, fotoPerdita, 'photo_before', context.UserId, context.DeviceId);
             }
@@ -518,6 +639,10 @@ export class InterventionOperations implements IInterventionOperations {
           }
           if (fotoRiparazione) {
             await this._savePhoto(intervention.id, fotoRiparazione, 'photo_after', context.UserId, context.DeviceId, t);
+          }
+
+          if (Number(intervention.status) !== 1 || intervention.repair_date != null) {
+            await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(intervention.id);
           }
 
           await t.commit();

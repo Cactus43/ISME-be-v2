@@ -5,16 +5,19 @@ import { DeviceAdapter } from '../Adapters/DeviceAdapter';
 import { InterventionAdapter } from '../Adapters/InterventionAdapter';
 import { MediaAdapter } from '../Adapters/MediaAdapter';
 import { TeamAdapter } from '../Adapters/TeamAdapter';
+import { UnitAdapter } from '../Adapters/UnitAdapter';
 import { AuthOperations } from '../Operations/AuthOperations';
 import { OperatorOperations } from '../Operations/OperatorOperations';
 import { InterventionOperations } from '../Operations/InterventionOperations';
 import { MediaOperations } from '../Operations/MediaOperations';
 import { TeamOperations } from '../Operations/TeamOperations';
+import { UnitOperations } from '../Operations/UnitOperations';
 import { AuthController } from '../Controllers/AuthController';
 import { InterventionController } from '../Controllers/InterventionController';
 import { OperatorController } from '../Controllers/OperatorController';
 import { MediaController } from '../Controllers/MediaController';
 import { TeamController } from '../Controllers/TeamController';
+import { UnitController } from '../Controllers/UnitController';
 import { EventBus } from './EventBus';
 import { AuditSubscriber } from './AuditSubscriber';
 import { Logger } from '../Utils/Logger';
@@ -46,6 +49,7 @@ function Build() {
   const InterventionAdapterInstance = new InterventionAdapter();
   const MediaAdapterInstance   = new MediaAdapter();
   const TeamAdapterInstance    = new TeamAdapter();
+  const UnitAdapterInstance    = new UnitAdapter();
 
   // ── Operations ──
   const AuthOps = new AuthOperations({
@@ -84,20 +88,28 @@ function Build() {
     EventBus: Bus,
   });
 
+  const UnitOps = new UnitOperations({
+    UnitAdapter: UnitAdapterInstance,
+    Logger: Log.child({ module: 'UnitOperations' }),
+  });
+
   // ── Controllers ──
   const AuthCtrl        = new AuthController({ AuthOperations: AuthOps });
   const InterventionCtrl = new InterventionController({ InterventionOperations: InterventionOps, TeamAdapter: TeamAdapterInstance });
   const OperatorCtrl    = new OperatorController({ OperatorOperations: OperatorOps });
   const MediaCtrl       = new MediaController({ MediaOperations: MediaOps });
   const TeamCtrl        = new TeamController({ TeamOperations: TeamOps });
+  const UnitCtrl        = new UnitController({ UnitOperations: UnitOps });
 
   return {
     Bus,
+    InterventionAdapter: InterventionAdapterInstance,
     AuthController: AuthCtrl,
     InterventionController: InterventionCtrl,
     OperatorController: OperatorCtrl,
     MediaController: MediaCtrl,
     TeamController: TeamCtrl,
+    UnitController: UnitCtrl,
   };
 }
 

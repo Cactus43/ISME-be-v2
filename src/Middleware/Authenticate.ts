@@ -4,6 +4,13 @@ import { AccessToken } from '../Data/Models/AccessToken';
 import { User } from '../Data/Models/User';
 import { JwtSignature } from '../Utils/Crypto';
 
+function NormalizeRole(Role: string): 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | 'viewer' {
+  if (Role === 'admin' || Role === 'approval_manager' || Role === 'execution_manager' || Role === 'operator' || Role === 'viewer') {
+    return Role;
+  }
+  return 'operator';
+}
+
 
 /* ──────────────────────────────────────────────────────────────────
    Authenticate — resolves active token → populates req.User.
@@ -97,7 +104,7 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
       Lastname: TokenRecord.User.lastname,
       Email: TokenRecord.User.email,
       Username: TokenRecord.User.username,
-      Role: TokenRecord.User.role,
+      Role: NormalizeRole(TokenRecord.User.role),
       TeamId: TokenRecord.User.team_id,
       Lang: TokenRecord.User.lang,
     };
@@ -114,7 +121,7 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
    Must be placed AFTER Authenticate in the middleware chain.
    ────────────────────────────────────────────────────────────────── */
 
-export function RequireRole(...Roles: Array<'admin' | 'viewer' | 'operator'>) {
+export function RequireRole(...Roles: Array<'admin' | 'approval_manager' | 'execution_manager' | 'operator' | 'viewer'>) {
 
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const request = req as IAuthenticatedRequest;

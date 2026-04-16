@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { IAuthenticatedRequest } from '../Data/Types/Http';
 import type { IMediaOperations } from '../Data/Interfaces/IOperations';
 import { RequestContext } from '../Data/Types/Contexts';
-import { Authenticate } from '../Middleware/Authenticate';
+import { Authenticate, RequireRole } from '../Middleware/Authenticate';
 import { ParseId } from '../Utils/ParseId';
 import { BadRequestError } from '../Data/Exceptions/Index';
 import { MEDIA_SLOTS, type MediaSlot } from '../Data/Types/Media';
@@ -27,9 +27,9 @@ export class MediaController {
 
   public RegisterRoutes(app: FastifyInstance): void {
     app.get('/intervention/:interventionId', { preHandler: [Authenticate()] }, this.Handle(this.ListByIntervention));
-    app.post('/intervention/:interventionId/slot/:slot', { preHandler: [Authenticate()] }, this.Handle(this.UploadForIntervention));
+    app.post('/intervention/:interventionId/slot/:slot', { preHandler: [Authenticate(), RequireRole('admin', 'execution_manager')] }, this.Handle(this.UploadForIntervention));
     app.get('/:id/file', { preHandler: [Authenticate()] }, this.Handle(this.GetFile));
-    app.delete('/:id', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.Delete));
+    app.delete('/:id', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager')] }, this.Handle(this.Delete));
   }
 
   private Handle(handler: ControllerHandler) {

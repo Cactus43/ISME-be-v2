@@ -43,18 +43,28 @@ export class TeamOperations implements ITeamOperations {
   }
 
   async Create(input: CreateTeamInput, context: RequestContext): Promise<OperationResult<TeamDTO>> {
-    const team = await this._teamAdapter.Create({ ...input, created_by: context.UserId });
+    const { units = [], ...teamInput } = input;
+    const team = await this._teamAdapter.Create({ ...teamInput, created_by: context.UserId });
+    await this._teamAdapter.ReplaceUnits(team.id, units, context.UserId);
+    const refreshed = await this._teamAdapter.FindById(team.id);
+    if (!refreshed) throw new NotFoundError('Team not found');
     this._log.info({ teamId: team.id }, 'Team created');
     this._eventBus.Publish({ Type: 'Team.Created', Source: 'backoffice', Timestamp: new Date(), Context: context, Payload: { TeamId: team.id, Code: input.code, Message: `Created team: ${input.code}` } });
-    return OperationResult.Ok(TeamDTO.FromModel(team));
+    return OperationResult.Ok(TeamDTO.FromModel(refreshed));
   }
 
   async Update(id: number, input: UpdateTeamInput, context: RequestContext): Promise<OperationResult<TeamDTO>> {
-    const team = await this._teamAdapter.Update(id, { ...input, updated_by: context.UserId });
+    const { units, ...teamInput } = input;
+    const team = await this._teamAdapter.Update(id, { ...teamInput, updated_by: context.UserId });
     if (!team) throw new NotFoundError('Team not found');
+    if (units !== undefined) {
+      await this._teamAdapter.ReplaceUnits(id, units, context.UserId);
+    }
+    const refreshed = await this._teamAdapter.FindById(id);
+    if (!refreshed) throw new NotFoundError('Team not found');
     this._log.info({ teamId: id }, 'Team updated');
     this._eventBus.Publish({ Type: 'Team.Updated', Source: 'backoffice', Timestamp: new Date(), Context: context, Payload: { TeamId: id, Fields: Object.keys(input) } });
-    return OperationResult.Ok(TeamDTO.FromModel(team));
+    return OperationResult.Ok(TeamDTO.FromModel(refreshed));
   }
 
   async Delete(id: number, context: RequestContext): Promise<OperationResult<void>> {

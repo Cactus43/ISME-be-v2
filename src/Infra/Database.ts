@@ -1,9 +1,10 @@
-import { Sequelize as SequelizeInstance } from 'sequelize';
+import { QueryTypes, Sequelize as SequelizeInstance } from 'sequelize';
 import { Config } from '../Config/Index';
 import {
   User,
   AccessToken,
   Team,
+  Unit,
   MobileDevice,
   Intervention,
   InterventionHistory,
@@ -36,6 +37,7 @@ function InitModels(): void {
   User.InitModel(Sequelize);
   AccessToken.InitModel(Sequelize);
   Team.InitModel(Sequelize);
+  Unit.InitModel(Sequelize);
   MobileDevice.InitModel(Sequelize);
   Intervention.InitModel(Sequelize);
   InterventionHistory.InitModel(Sequelize);
@@ -51,6 +53,10 @@ function SetupAssociations(): void {
   // ── User ↔ Team ──
   Team.hasMany(User, { foreignKey: 'team_id', as: 'Users' });
   User.belongsTo(Team, { foreignKey: 'team_id', as: 'Team' });
+
+  // ── Team ↔ Unit ──
+  Team.hasMany(Unit, { foreignKey: 'team_id', as: 'Units' });
+  Unit.belongsTo(Team, { foreignKey: 'team_id', as: 'Team' });
 
   // ── User ↔ AccessToken ──
   User.hasMany(AccessToken, { foreignKey: 'user_id', as: 'Tokens' });
@@ -97,6 +103,31 @@ function SetupAssociations(): void {
   // the DB schema enforces the FK constraints.
 }
 
+async function EnsureUnitColumns(): Promise<void> {
+  const RequiredColumns: Array<{ Name: string; Sql: string }> = [
+    { Name: 'created_by', Sql: 'ALTER TABLE units ADD COLUMN created_by BIGINT UNSIGNED NULL DEFAULT NULL' },
+    { Name: 'updated_by', Sql: 'ALTER TABLE units ADD COLUMN updated_by BIGINT UNSIGNED NULL DEFAULT NULL' },
+    { Name: 'deleted_by', Sql: 'ALTER TABLE units ADD COLUMN deleted_by BIGINT UNSIGNED NULL DEFAULT NULL' },
+    { Name: 'deleted_at', Sql: 'ALTER TABLE units ADD COLUMN deleted_at DATETIME NULL DEFAULT NULL' },
+  ];
+
+  for (const column of RequiredColumns) {
+    const Exists = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'units'
+         AND COLUMN_NAME = :columnName`,
+      { replacements: { columnName: column.Name }, type: QueryTypes.SELECT },
+    );
+
+    if (Number(Exists[0]?.c ?? 0) === 0) {
+      await Sequelize.query(column.Sql);
+      console.log(`[DB] Added missing units.${column.Name} column`);
+    }
+  }
+}
+
 
 /* ─── Public bootstrap ─────────────────────────────────────────── */
 
@@ -105,4 +136,7 @@ export async function ConnectDatabase(): Promise<void> {
   SetupAssociations();
   await Sequelize.authenticate();
   console.log('[DB] Connection established');
+  await Sequelize.sync();
+  await EnsureUnitColumns();
+  console.log('[DB] Models synchronised');
 }
