@@ -327,7 +327,7 @@ export class InterventionOperations implements IInterventionOperations {
     return OperationResult.Ok({ Affected: affected });
   }
 
-  async GetPriorityTrackingWeek(weekStart: Date, weekEnd: Date) {
+  async GetPriorityTrackingWeek(weekStart: Date, _weekEnd: Date) {
     const CurrentWeekStart = GetCurrentMonday(new Date());
     if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
       throw new BadRequestError('Future priority-tracking weeks are not allowed');
@@ -336,7 +336,7 @@ export class InterventionOperations implements IInterventionOperations {
     return OperationResult.Ok(data);
   }
 
-  async GetPriorityTrackingTimeline(weekStart: Date, weekEnd: Date) {
+  async GetPriorityTrackingTimeline(weekStart: Date, _weekEnd: Date) {
     const CurrentWeekStart = GetCurrentMonday(new Date());
     if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
       throw new BadRequestError('Future priority-tracking weeks are not allowed');

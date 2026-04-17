@@ -9,7 +9,7 @@ import type { IAuthenticatedRequest } from './Http';
  */
 export interface RequestContext {
   UserId: number | null;
-  UserRole: 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | null;
+  UserRole: 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | 'viewer' | null;
   DeviceId: number | null;
   IpAddress: string | null;
   AuthSource: 'backoffice' | 'mobile' | null;

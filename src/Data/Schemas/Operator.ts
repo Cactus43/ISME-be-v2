@@ -10,6 +10,7 @@ export const CREATE_OPERATOR_SCHEMA = z.object({
   username: z.string().min(1).max(128),
   password: z.string().min(4),
   team_id: z.number().int().positive().optional().nullable(),
+  is_active: z.boolean().optional(),
 });
 
 export type CreateOperatorInput = z.infer<typeof CREATE_OPERATOR_SCHEMA>;

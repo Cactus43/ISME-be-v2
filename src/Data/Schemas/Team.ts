@@ -8,6 +8,7 @@ export const CREATE_TEAM_SCHEMA = z.object({
   code: z.string().min(1).max(16),
   description: z.string().max(512).optional().nullable(),
   units: z.array(z.string().min(1).max(64)).optional().default([]),
+  is_active: z.boolean().optional(),
 });
 
 export type CreateTeamInput = z.infer<typeof CREATE_TEAM_SCHEMA>;
