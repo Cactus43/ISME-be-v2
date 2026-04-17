@@ -390,8 +390,10 @@ export class InterventionAdapter implements IInterventionAdapter {
        INNER JOIN interventions iv ON iv.id = i.intervention_id
        WHERE i.session_id = :sessionId
          AND iv.deleted_at IS NULL
-         AND iv.status = 1
-         AND iv.repair_date IS NULL
+         AND (
+           (iv.status = 1 AND iv.repair_date IS NULL)
+           OR i.executed = 1
+         )
        ORDER BY i.rank_order ASC`,
       {
         replacements: { sessionId: AnchorSession.id },
