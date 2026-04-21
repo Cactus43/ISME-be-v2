@@ -434,4 +434,4 @@ Health check integrato su `/health` (ogni 30s).
 
 ## Licenza
 
-UNLICENSED — Proprietario — © Saturn Technologies
+UNLICENSED — Proprietario — Alessandro Lombardi
