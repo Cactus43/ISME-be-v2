@@ -3,6 +3,7 @@ import { Intervention } from '../Data/Models/Intervention';
 import { User } from '../Data/Models/User';
 import { Media } from '../Data/Models/Media';
 import { Sequelize } from '../Infra/Database';
+import { CalculateSteamFlow } from '../Utils/SteamFlow';
 import type { InterventionAttributes } from '../Data/Models/Intervention';
 import type {
   IInterventionAdapter,
@@ -28,11 +29,68 @@ function ToLocalIsoDate(d: Date): string {
 
 const OperatorInclude = { model: User, as: 'Operator', attributes: ['id', 'firstname', 'lastname', 'username'] };
 const MediaInclude    = { model: Media, as: 'Media', where: { deleted_at: null } as any, required: false };
+const DEFAULT_STEAM_PRICE_EUR_PER_TONNE = 50;
 
 
 // ─── InterventionAdapter ───────────────────────────────────────────────────
 
 export class InterventionAdapter implements IInterventionAdapter {
+
+  private ResolveFlowTonneForPriorityTracking(row: {
+    intervention_type: number;
+    steam_flow_tonne: number | null;
+    steam_flow_kg: number | null;
+    nominal_flow: string | null;
+    pressure: string | null;
+    plume_length: string | null;
+  }): number {
+    const ExistingTonne = Number(row.steam_flow_tonne ?? 0)
+    if (Number.isFinite(ExistingTonne) && ExistingTonne > 0) return ExistingTonne
+
+    if (row.intervention_type === 1) {
+      const Pressure = Number(row.pressure)
+      const PlumeLength = Number(row.plume_length)
+      if (Number.isFinite(Pressure) && Number.isFinite(PlumeLength) && PlumeLength > 0) {
+        try {
+          return CalculateSteamFlow(PlumeLength, Pressure).Tonne
+        } catch {
+          // Fallback handled below.
+        }
+      }
+    }
+
+    if (row.intervention_type === 2) {
+      const NominalFlow = Number(row.nominal_flow)
+      if (Number.isFinite(NominalFlow) && NominalFlow > 0) return NominalFlow
+    }
+
+    const ExistingKg = Number(row.steam_flow_kg ?? 0)
+    if (Number.isFinite(ExistingKg) && ExistingKg > 0) return ExistingKg / 1000
+
+    return 0
+  }
+
+  private ResolveExecutedAt(
+    executed: number,
+    executedAt: Date | null,
+    itemUpdatedAt: Date | null,
+  ): Date | null {
+    if (executed !== 1) return null
+    if (executedAt) return new Date(executedAt)
+    if (itemUpdatedAt) return new Date(itemUpdatedAt)
+    return null
+  }
+
+  private ComputePriorityTrackingEuroAt(
+    flowTonne: number,
+    inspectionDate: Date,
+    stopAt: Date | null,
+  ): number {
+    const EndMs = stopAt ? stopAt.getTime() : Date.now()
+    const HoursSinceInspection = Math.max(0, (EndMs - inspectionDate.getTime()) / 3600000)
+    const euro = flowTonne * DEFAULT_STEAM_PRICE_EUR_PER_TONNE * HoursSinceInspection
+    return Math.round(euro * 100) / 100
+  }
 
   private async EnsureInterventionsSyncColumns(): Promise<void> {
     const RowVersionColumn = await Sequelize.query<{ c: number }>(
@@ -76,6 +134,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         po TINYINT(1) NOT NULL DEFAULT 0,
         work_permit TINYINT(1) NOT NULL DEFAULT 0,
         executed TINYINT(1) NOT NULL DEFAULT 0,
+        executed_at DATETIME NULL,
         rationale ENUM('Mancanza Operatore', 'Difficolta Intercetto', 'Mancanza materiali', 'Permesso non aperto') NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -104,6 +163,22 @@ export class InterventionAdapter implements IInterventionAdapter {
       await Sequelize.query(`
         ALTER TABLE priority_tracking_items
         ADD COLUMN executed TINYINT(1) NOT NULL DEFAULT 0
+      `)
+    }
+
+    const ExecutedAtColumn = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'priority_tracking_items'
+         AND COLUMN_NAME = 'executed_at'`,
+      { type: QueryTypes.SELECT },
+    )
+
+    if (Number(ExecutedAtColumn[0]?.c ?? 0) === 0) {
+      await Sequelize.query(`
+        ALTER TABLE priority_tracking_items
+        ADD COLUMN executed_at DATETIME NULL
       `)
     }
   }
@@ -279,11 +354,18 @@ export class InterventionAdapter implements IInterventionAdapter {
       rationale: PriorityTrackingRationale | null;
       calculated_rationale: PriorityTrackingRationale | null;
       executed: number;
+      executed_at: Date | null;
+      item_updated_at: Date | null;
       tag: string;
       business_team: string;
       unit: string | null;
       location: string;
       steam_flow_kg: number | null;
+      steam_flow_tonne: number | null;
+      nominal_flow: string | null;
+      pressure: string | null;
+      plume_length: string | null;
+      intervention_type: number;
       inspection_date: Date;
       status: number;
     }>(
@@ -307,11 +389,18 @@ export class InterventionAdapter implements IInterventionAdapter {
            LIMIT 1
          ) AS calculated_rationale,
          i.executed AS executed,
+         i.executed_at,
+         i.updated_at AS item_updated_at,
          iv.tag,
          iv.business_team,
          iv.unit,
          iv.location,
          iv.steam_flow_kg,
+         iv.steam_flow_tonne,
+         iv.nominal_flow,
+         iv.pressure,
+         iv.plume_length,
+         iv.intervention_type,
          iv.inspection_date,
          iv.status
        FROM priority_tracking_items i
@@ -329,7 +418,18 @@ export class InterventionAdapter implements IInterventionAdapter {
       SessionId: Session.id,
       WeekStart: new Date(Session.week_start_date),
       WeekEnd: new Date(Session.week_end_date),
-      Items: Rows.map((Row) => ({
+      Items: Rows.map((Row) => {
+        const ExecutedAt = this.ResolveExecutedAt(Row.executed, Row.executed_at, Row.item_updated_at)
+        const flowTonne = this.ResolveFlowTonneForPriorityTracking({
+          intervention_type: Row.intervention_type,
+          steam_flow_tonne: Row.steam_flow_tonne,
+          steam_flow_kg: Row.steam_flow_kg,
+          nominal_flow: Row.nominal_flow,
+          pressure: Row.pressure,
+          plume_length: Row.plume_length,
+        })
+
+        return {
         Id: Row.id,
         SessionId: Row.session_id,
         InterventionId: Row.intervention_id,
@@ -346,9 +446,12 @@ export class InterventionAdapter implements IInterventionAdapter {
         Unit: Row.unit,
         Location: Row.location,
         SteamFlowKg: Row.steam_flow_kg,
+        InterventionType: Row.intervention_type,
+        Euro: this.ComputePriorityTrackingEuroAt(flowTonne, new Date(Row.inspection_date), ExecutedAt),
+        ExecutedAt,
         InspectionDate: new Date(Row.inspection_date),
         Status: Row.status,
-      })),
+      }}),
     }
   }
 
@@ -373,6 +476,14 @@ export class InterventionAdapter implements IInterventionAdapter {
       unit: string | null;
       location: string;
       steam_flow_kg: number | null;
+      steam_flow_tonne: number | null;
+      nominal_flow: string | null;
+      pressure: string | null;
+      plume_length: string | null;
+      intervention_type: number;
+      executed: number;
+      executed_at: Date | null;
+      item_updated_at: Date | null;
       inspection_date: Date;
       status: number;
     }>(
@@ -384,6 +495,14 @@ export class InterventionAdapter implements IInterventionAdapter {
          iv.unit,
          iv.location,
          iv.steam_flow_kg,
+         iv.steam_flow_tonne,
+         iv.nominal_flow,
+         iv.pressure,
+         iv.plume_length,
+         iv.intervention_type,
+         i.executed,
+         i.executed_at,
+         i.updated_at AS item_updated_at,
          iv.inspection_date,
          iv.status
        FROM priority_tracking_items i
@@ -517,6 +636,16 @@ export class InterventionAdapter implements IInterventionAdapter {
           }
         }
 
+        const FlowTonne = this.ResolveFlowTonneForPriorityTracking({
+          intervention_type: Base.intervention_type,
+          steam_flow_tonne: Base.steam_flow_tonne,
+          steam_flow_kg: Base.steam_flow_kg,
+          nominal_flow: Base.nominal_flow,
+          pressure: Base.pressure,
+          plume_length: Base.plume_length,
+        })
+        const ExecutedAt = this.ResolveExecutedAt(Base.executed, Base.executed_at, Base.item_updated_at)
+
         return {
           InterventionId: Base.intervention_id,
           RankOrder: Base.rank_order,
@@ -525,6 +654,9 @@ export class InterventionAdapter implements IInterventionAdapter {
           Unit: Base.unit,
           Location: Base.location,
           SteamFlowKg: Base.steam_flow_kg,
+          InterventionType: Base.intervention_type,
+          Euro: this.ComputePriorityTrackingEuroAt(FlowTonne, new Date(Base.inspection_date), ExecutedAt),
+          ExecutedAt,
           InspectionDate: new Date(Base.inspection_date),
           Status: Base.status,
           CalculatedRationale: CalculatedByIntervention.get(Base.intervention_id) ?? null,
@@ -584,6 +716,7 @@ export class InterventionAdapter implements IInterventionAdapter {
     await Sequelize.query(
       `UPDATE priority_tracking_items
        SET executed = 1,
+           executed_at = COALESCE(executed_at, CURRENT_TIMESTAMP),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = (
          SELECT latest.id

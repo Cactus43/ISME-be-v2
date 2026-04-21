@@ -294,7 +294,11 @@ export class InterventionOperations implements IInterventionOperations {
 
     // Tempo Intervento
     if (input.post_date !== undefined) updateData.post_date = input.post_date;
-    if (input.repair_date !== undefined) updateData.repair_date = input.repair_date ? new Date(input.repair_date) : null;
+    if (input.repair_date !== undefined) {
+      updateData.repair_date = input.repair_date ? new Date(input.repair_date) : null;
+      // Keep status coherent with repair date edits done from backoffice.
+      updateData.status = input.repair_date ? 0 : 1;
+    }
 
     // Audit
     updateData.updated_by = context.UserId;

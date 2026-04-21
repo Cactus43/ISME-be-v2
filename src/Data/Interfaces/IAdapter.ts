@@ -118,6 +118,9 @@ export interface PriorityTrackingItem {
   Unit: string | null;
   Location: string;
   SteamFlowKg: number | null;
+  InterventionType: number;
+  Euro: number;
+  ExecutedAt: Date | null;
   InspectionDate: Date;
   Status: number;
 }
@@ -154,6 +157,9 @@ export interface PriorityTrackingTimelineRow {
   Unit: string | null;
   Location: string;
   SteamFlowKg: number | null;
+  InterventionType: number;
+  Euro: number;
+  ExecutedAt: Date | null;
   InspectionDate: Date;
   Status: number;
   CalculatedRationale: PriorityTrackingRationale | null;
