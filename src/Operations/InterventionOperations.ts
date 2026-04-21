@@ -53,6 +53,10 @@ function BuildMobileSyncCursor(updatedAt: Date, id: number): string {
   return `${updatedAt.toISOString()}|${id}`
 }
 
+function NonNullableText(value: string | null): string {
+  return value ?? '';
+}
+
 
 // ─── InterventionOperations ────────────────────────────────────────────────
 
@@ -248,13 +252,13 @@ export class InterventionOperations implements IInterventionOperations {
     const updateData: Partial<InterventionAttributes> = {};
 
     // Anagrafica Intervento
-    if (input.tag !== undefined) updateData.tag = input.tag!;
+    if (input.tag !== undefined) updateData.tag = NonNullableText(input.tag);
     if (input.unit !== undefined) updateData.unit = input.unit;
-    if (input.business_team !== undefined) updateData.business_team = input.business_team!;
-    if (input.location !== undefined) updateData.location = input.location!;
+    if (input.business_team !== undefined) updateData.business_team = NonNullableText(input.business_team);
+    if (input.location !== undefined) updateData.location = NonNullableText(input.location);
     if (input.competence !== undefined) updateData.competence = input.competence;
     if (input.service !== undefined) updateData.service = input.service;
-    if (input.component_equipment !== undefined) updateData.component_equipment = input.component_equipment!;
+    if (input.component_equipment !== undefined) updateData.component_equipment = NonNullableText(input.component_equipment);
     if (input.size !== undefined) updateData.size = input.size;
     if (input.dn_discharger !== undefined) updateData.dn_discharger = input.dn_discharger;
     if (input.operator_id !== undefined) updateData.operator_id = input.operator_id;

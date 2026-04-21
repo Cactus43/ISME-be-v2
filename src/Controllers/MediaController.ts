@@ -44,8 +44,9 @@ export class MediaController {
   private async GetFile(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
     const result = await this._ops.GetFile(ParseId((req.params as Record<string, string>).id));
     reply.header('Content-Type', result.Data.MimeType);
+    reply.header('Content-Length', result.Data.Size);
     reply.header('Content-Disposition', `inline; filename="${result.Data.Filename}"`);
-    reply.send(createReadStream(result.Data.FilePath));
+    return reply.send(createReadStream(result.Data.FilePath));
   }
 
   private async ListByIntervention(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
@@ -74,6 +75,7 @@ export class MediaController {
     }
 
     const buffer = await file.toBuffer();
+
     const context = RequestContext.FromRequest(req);
     const result = await this._ops.UploadForIntervention(
       ParseId(params.interventionId, 'interventionId'),

@@ -40,6 +40,20 @@ export async function BuildApp(): Promise<FastifyInstance> {
   app.addHook('onResponse', RequestLogger);
 
 
+  // ─── Error / 404 Handling ──────────────────────────────────────────────
+  // Must be registered BEFORE any `app.register(...)` that declares routes.
+  // In Fastify 5 a custom error handler is encapsulated per plugin scope and
+  // only applies to plugins registered after setErrorHandler() is called.
+  // Registering it here ensures that all AppError subclasses thrown by any
+  // controller are mapped to their real HTTP status (404, 400, 409, ...).
+
+  app.setNotFoundHandler(async () => {
+    throw new NotFoundError('Route not found');
+  });
+
+  app.setErrorHandler(ErrorHandler);
+
+
   // ─── Health Check ───────────────────────────────────────────────────────
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -75,14 +89,6 @@ export async function BuildApp(): Promise<FastifyInstance> {
     new ImagesController().RegisterRoutes(instance);
   }, { prefix: '/api/Images' });
 
-
-  // ─── 404 / Error Handling ───────────────────────────────────────────────
-
-  app.setNotFoundHandler(async () => {
-    throw new NotFoundError('Route not found');
-  });
-
-  app.setErrorHandler(ErrorHandler);
 
   return app;
 }

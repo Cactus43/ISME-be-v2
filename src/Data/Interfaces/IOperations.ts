@@ -101,7 +101,7 @@ export interface IInterventionOperations {
 // ─── IMediaOperations ──────────────────────────────────────────────────────
 
 export interface IMediaOperations {
-  GetFile(id: number): Promise<OperationResult<{ FilePath: string; MimeType: string; Filename: string }>>;
+  GetFile(id: number): Promise<OperationResult<{ FilePath: string; MimeType: string; Filename: string; Size: number }>>;
   ListByIntervention(interventionId: number): Promise<OperationResult<MediaDTO[]>>;
   UploadForIntervention(interventionId: number, slot: MediaSlot, file: UploadedMediaFile, context: RequestContext): Promise<OperationResult<MediaDTO>>;
   Delete(id: number, context: RequestContext): Promise<OperationResult<void>>;

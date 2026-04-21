@@ -41,7 +41,7 @@ export class MediaOperations implements IMediaOperations {
     this._eventBus = Bus;
   }
 
-  async GetFile(id: number): Promise<OperationResult<{ FilePath: string; MimeType: string; Filename: string }>> {
+  async GetFile(id: number): Promise<OperationResult<{ FilePath: string; MimeType: string; Filename: string; Size: number }>> {
     const media = await this._mediaAdapter.FindById(id);
     if (!media) throw new NotFoundError('Media not found');
 
@@ -51,10 +51,14 @@ export class MediaOperations implements IMediaOperations {
     }
     if (!fs.existsSync(filePath)) throw new NotFoundError('File not found on disk');
 
+    const stats = fs.statSync(filePath);
+    if (!stats.isFile()) throw new NotFoundError('File not found on disk');
+
     return OperationResult.Ok({
       FilePath: filePath,
       MimeType: media.mime_type ?? 'application/octet-stream',
       Filename: media.filename,
+      Size: stats.size,
     });
   }
 
