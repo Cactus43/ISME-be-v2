@@ -153,7 +153,7 @@ export class InterventionOperations implements IInterventionOperations {
     });
     const dtos = rows.map(InterventionDTO.FromModel);
 
-    const steamPrice = filters.steamPrice ?? 50;
+    const steamPrice = 50;
     const timeFrame = (['day', 'week', 'month', 'year'].includes(filters.timeFrame ?? '') ? filters.timeFrame : 'month') as 'day' | 'week' | 'month' | 'year';
 
     const bundle = ComputeChartBundle(dtos, steamPrice, timeFrame);

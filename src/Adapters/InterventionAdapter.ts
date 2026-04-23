@@ -3,7 +3,6 @@ import { Intervention } from '../Data/Models/Intervention';
 import { User } from '../Data/Models/User';
 import { Media } from '../Data/Models/Media';
 import { Sequelize } from '../Infra/Database';
-import { CalculateSteamFlow } from '../Utils/SteamFlow';
 import type { InterventionAttributes } from '../Data/Models/Intervention';
 import type {
   IInterventionAdapter,
@@ -30,11 +29,85 @@ function ToLocalIsoDate(d: Date): string {
 const OperatorInclude = { model: User, as: 'Operator', attributes: ['id', 'firstname', 'lastname', 'username'] };
 const MediaInclude    = { model: Media, as: 'Media', where: { deleted_at: null } as any, required: false };
 const DEFAULT_STEAM_PRICE_EUR_PER_TONNE = 50;
+const STEAM_LEAK_FLOW_LOOKUP_KG: Record<number, { under05: number; halfToOne: number }> = {
+  38: { under05: 7, halfToOne: 15 },
+  55: { under05: 7, halfToOne: 15 },
+  115: { under05: 8, halfToOne: 16 },
+  365: { under05: 9, halfToOne: 17 },
+  600: { under05: 9, halfToOne: 17 },
+};
+const STEAM_LEAK_RELATIVE_COEFFICIENTS: Record<number, [number, number, number]> = {
+  38: [1.4932, 41.894, -116.56],
+  55: [1.6946, 40.081, -112.74],
+  115: [2.5, 32.833, -97.5],
+  365: [5.8563, 2.6257, -33.949],
+  600: [9.0112, -25.768, 25.782],
+};
+
+type PlumeBucket = 'under05' | 'halfToOne' | 'aboveOne' | null;
 
 
 // ─── InterventionAdapter ───────────────────────────────────────────────────
 
 export class InterventionAdapter implements IInterventionAdapter {
+
+  private ToNormalizedNumber(value: string | null | undefined): number | null {
+    if (!value) return null
+    const parsed = Number(String(value).replace(',', '.').trim())
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  private NormalizeSteamLeakPressure(pressureRaw: string | null): number | null {
+    const pressure = this.ToNormalizedNumber(pressureRaw)
+    if (pressure == null) return null
+    if (pressure === 38 || pressure === 40) return 38
+    if (pressure === 55) return 55
+    if (pressure === 115 || pressure === 125) return 115
+    if (pressure === 365) return 365
+    if (pressure === 600) return 600
+    return null
+  }
+
+  private ResolvePlumeBucket(value: string | null): PlumeBucket {
+    const normalized = (value ?? '').toLowerCase().replace(',', '.').replace(/\s+/g, '')
+    // Missing plume is treated as x = 0.
+    if (!normalized) return 'under05'
+
+    if (normalized.startsWith('<') || normalized.includes('<0.5')) return 'under05'
+    if (
+      (normalized.includes('0.5') && normalized.includes('-') && normalized.includes('1')) ||
+      normalized.includes('0.5mt-1mt') ||
+      normalized.includes('1mt-0.5mt')
+    ) return 'halfToOne'
+    if (normalized.startsWith('>') || normalized.includes('>1')) return 'aboveOne'
+
+    const numeric = this.ToNormalizedNumber(value)
+    if (numeric == null) return null
+    if (numeric < 0.5) return 'under05'
+    if (numeric < 1) return 'halfToOne'
+    return 'aboveOne'
+  }
+
+  private ResolveRelativePlumeLengthMeters(plumeLength: string | null, plumeSpec: string | null): number | null {
+    const fromPlumeLength = this.ToNormalizedNumber(plumeLength)
+    if (fromPlumeLength != null && fromPlumeLength > 1) return fromPlumeLength
+
+    const fromPlumeSpec = this.ToNormalizedNumber(plumeSpec)
+    if (fromPlumeSpec != null && fromPlumeSpec > 0) return fromPlumeSpec
+
+    return 0
+  }
+
+  private ComputeRelativeSteamLeakKg(pressure: number, plumeLengthM: number): number | null {
+    const coeffs = STEAM_LEAK_RELATIVE_COEFFICIENTS[pressure]
+    if (!coeffs) return null
+
+    const xFeet = plumeLengthM / 0.3048
+    const [a, b, c] = coeffs
+    const kg = (a * (xFeet ** 2) + b * xFeet + c) * 0.454
+    if (!Number.isFinite(kg)) return null
+    return Math.max(0, kg)
+  }
 
   private ResolveFlowTonneForPriorityTracking(row: {
     intervention_type: number;
@@ -43,26 +116,31 @@ export class InterventionAdapter implements IInterventionAdapter {
     nominal_flow: string | null;
     pressure: string | null;
     plume_length: string | null;
+    plume_spec: string | null;
   }): number {
-    const ExistingTonne = Number(row.steam_flow_tonne ?? 0)
-    if (Number.isFinite(ExistingTonne) && ExistingTonne > 0) return ExistingTonne
+    if (row.intervention_type === 2) {
+      return 0.01
+    }
 
     if (row.intervention_type === 1) {
-      const Pressure = Number(row.pressure)
-      const PlumeLength = Number(row.plume_length)
-      if (Number.isFinite(Pressure) && Number.isFinite(PlumeLength) && PlumeLength > 0) {
-        try {
-          return CalculateSteamFlow(PlumeLength, Pressure).Tonne
-        } catch {
-          // Fallback handled below.
+      const bucket = this.ResolvePlumeBucket(row.plume_length)
+      const pressure = this.NormalizeSteamLeakPressure(row.pressure)
+      const lookup = pressure == null ? null : STEAM_LEAK_FLOW_LOOKUP_KG[pressure]
+
+      if (bucket === 'under05' && lookup) return lookup.under05 / 1000
+      if (bucket === 'halfToOne' && lookup) return lookup.halfToOne / 1000
+
+      if (bucket === 'aboveOne' && pressure != null) {
+        const plumeLengthM = this.ResolveRelativePlumeLengthMeters(row.plume_length, row.plume_spec)
+        if (plumeLengthM != null) {
+          const relativeKg = this.ComputeRelativeSteamLeakKg(pressure, plumeLengthM)
+          if (relativeKg != null) return relativeKg / 1000
         }
       }
     }
 
-    if (row.intervention_type === 2) {
-      const NominalFlow = Number(row.nominal_flow)
-      if (Number.isFinite(NominalFlow) && NominalFlow > 0) return NominalFlow
-    }
+    const ExistingTonne = Number(row.steam_flow_tonne ?? 0)
+    if (Number.isFinite(ExistingTonne) && ExistingTonne > 0) return ExistingTonne
 
     const ExistingKg = Number(row.steam_flow_kg ?? 0)
     if (Number.isFinite(ExistingKg) && ExistingKg > 0) return ExistingKg / 1000
@@ -365,6 +443,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       nominal_flow: string | null;
       pressure: string | null;
       plume_length: string | null;
+      plume_spec: string | null;
       intervention_type: number;
       inspection_date: Date;
       status: number;
@@ -400,6 +479,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          iv.nominal_flow,
          iv.pressure,
          iv.plume_length,
+         iv.plume_spec,
          iv.intervention_type,
          iv.inspection_date,
          iv.status
@@ -427,6 +507,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           nominal_flow: Row.nominal_flow,
           pressure: Row.pressure,
           plume_length: Row.plume_length,
+          plume_spec: Row.plume_spec,
         })
 
         return {
@@ -445,6 +526,9 @@ export class InterventionAdapter implements IInterventionAdapter {
         BusinessTeam: Row.business_team,
         Unit: Row.unit,
         Location: Row.location,
+        Pressure: Row.pressure,
+        PlumeLength: Row.plume_length,
+        PlumeSpec: Row.plume_spec,
         SteamFlowKg: Row.steam_flow_kg,
         InterventionType: Row.intervention_type,
         Euro: this.ComputePriorityTrackingEuroAt(flowTonne, new Date(Row.inspection_date), ExecutedAt),
@@ -480,6 +564,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       nominal_flow: string | null;
       pressure: string | null;
       plume_length: string | null;
+      plume_spec: string | null;
       intervention_type: number;
       executed: number;
       executed_at: Date | null;
@@ -499,6 +584,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          iv.nominal_flow,
          iv.pressure,
          iv.plume_length,
+         iv.plume_spec,
          iv.intervention_type,
          i.executed,
          i.executed_at,
@@ -643,6 +729,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           nominal_flow: Base.nominal_flow,
           pressure: Base.pressure,
           plume_length: Base.plume_length,
+          plume_spec: Base.plume_spec,
         })
         const ExecutedAt = this.ResolveExecutedAt(Base.executed, Base.executed_at, Base.item_updated_at)
 
@@ -653,6 +740,9 @@ export class InterventionAdapter implements IInterventionAdapter {
           BusinessTeam: Base.business_team,
           Unit: Base.unit,
           Location: Base.location,
+          Pressure: Base.pressure,
+          PlumeLength: Base.plume_length,
+          PlumeSpec: Base.plume_spec,
           SteamFlowKg: Base.steam_flow_kg,
           InterventionType: Base.intervention_type,
           Euro: this.ComputePriorityTrackingEuroAt(FlowTonne, new Date(Base.inspection_date), ExecutedAt),

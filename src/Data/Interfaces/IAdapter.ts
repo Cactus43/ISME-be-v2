@@ -117,6 +117,9 @@ export interface PriorityTrackingItem {
   BusinessTeam: string;
   Unit: string | null;
   Location: string;
+  Pressure: string | null;
+  PlumeLength: string | null;
+  PlumeSpec: string | null;
   SteamFlowKg: number | null;
   InterventionType: number;
   Euro: number;
@@ -156,6 +159,9 @@ export interface PriorityTrackingTimelineRow {
   BusinessTeam: string;
   Unit: string | null;
   Location: string;
+  Pressure: string | null;
+  PlumeLength: string | null;
+  PlumeSpec: string | null;
   SteamFlowKg: number | null;
   InterventionType: number;
   Euro: number;

@@ -10,6 +10,116 @@ import type { InterventionDTO } from '../Data/Types/DTOs/InterventionDTO';
 
 const CO2_FACTOR = 0.19;
 
+const STEAM_LEAK_FLOW_LOOKUP_KG: Record<number, { under05: number; halfToOne: number }> = {
+  38: { under05: 7, halfToOne: 15 },
+  55: { under05: 7, halfToOne: 15 },
+  115: { under05: 8, halfToOne: 16 },
+  365: { under05: 9, halfToOne: 17 },
+  600: { under05: 9, halfToOne: 17 },
+};
+
+const STEAM_LEAK_RELATIVE_COEFFICIENTS: Record<number, [number, number, number]> = {
+  38: [1.4932, 41.894, -116.56],
+  55: [1.6946, 40.081, -112.74],
+  115: [2.5, 32.833, -97.5],
+  365: [5.8563, 2.6257, -33.949],
+  600: [9.0112, -25.768, 25.782],
+};
+
+type PlumeBucket = 'under05' | 'halfToOne' | 'aboveOne' | null;
+
+function ToNormalizedNumber(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(String(value).replace(',', '.').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function NormalizeSteamLeakPressure(pressureRaw: string | null): number | null {
+  const pressure = ToNormalizedNumber(pressureRaw);
+  if (pressure == null) return null;
+  if (pressure === 38 || pressure === 40) return 38;
+  if (pressure === 55) return 55;
+  if (pressure === 115 || pressure === 125) return 115;
+  if (pressure === 365) return 365;
+  if (pressure === 600) return 600;
+  return null;
+}
+
+function ResolvePlumeBucket(value: string | null): PlumeBucket {
+  const normalized = (value ?? '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
+  // Missing plume is treated as x = 0.
+  if (!normalized) return 'under05';
+
+  if (normalized.startsWith('<') || normalized.includes('<0.5')) return 'under05';
+  if (
+    (normalized.includes('0.5') && normalized.includes('-') && normalized.includes('1')) ||
+    normalized.includes('0.5mt-1mt') ||
+    normalized.includes('1mt-0.5mt')
+  ) return 'halfToOne';
+  if (normalized.startsWith('>') || normalized.includes('>1')) return 'aboveOne';
+
+  const numeric = ToNormalizedNumber(value);
+  if (numeric == null) return null;
+  if (numeric < 0.5) return 'under05';
+  if (numeric < 1) return 'halfToOne';
+  return 'aboveOne';
+}
+
+function ResolveRelativePlumeLengthMeters(row: InterventionDTO): number | null {
+  const fromPlumeLength = ToNormalizedNumber(row.PlumeLength);
+  if (fromPlumeLength != null && fromPlumeLength > 1) return fromPlumeLength;
+
+  const fromPlumeSpec = ToNormalizedNumber(row.PlumeSpec);
+  if (fromPlumeSpec != null && fromPlumeSpec > 0) return fromPlumeSpec;
+
+  return 0;
+}
+
+function ComputeRelativeSteamLeakKg(pressure: number, plumeLengthM: number): number | null {
+  const coeffs = STEAM_LEAK_RELATIVE_COEFFICIENTS[pressure];
+  if (!coeffs) return null;
+
+  const xFeet = plumeLengthM / 0.3048;
+  const [a, b, c] = coeffs;
+  const kg = (a * (xFeet ** 2) + b * xFeet + c) * 0.454;
+  if (!Number.isFinite(kg)) return null;
+  return Math.max(0, kg);
+}
+
+function GetFallbackKg(row: InterventionDTO): number {
+  const kg = row.SteamFlowKg ?? 0;
+  return Number.isFinite(kg) && kg > 0 ? kg : 0;
+}
+
+function GetNominalSteamFlowKg(row: InterventionDTO): number {
+  // Steam trap nominal flow is fixed: 0.01 T/h = 10 kg/h.
+  if (row.InterventionType === 2) return 10;
+
+  if (row.InterventionType !== 1) return GetFallbackKg(row);
+
+  const bucket = ResolvePlumeBucket(row.PlumeLength);
+  const pressure = NormalizeSteamLeakPressure(row.Pressure);
+  const lookup = pressure == null ? null : STEAM_LEAK_FLOW_LOOKUP_KG[pressure];
+
+  if (bucket === 'under05' && lookup) return lookup.under05;
+  if (bucket === 'halfToOne' && lookup) return lookup.halfToOne;
+
+  if (bucket === 'aboveOne' && pressure != null) {
+    const plumeLengthM = ResolveRelativePlumeLengthMeters(row);
+    if (plumeLengthM != null) {
+      const relativeKg = ComputeRelativeSteamLeakKg(pressure, plumeLengthM);
+      if (relativeKg != null) return relativeKg;
+    }
+  }
+
+  // For plume > 1 m, keep relative-formula value from persisted flow.
+  return GetFallbackKg(row);
+}
+
+function GetNominalSteamFlowTonne(row: InterventionDTO): number {
+  return GetNominalSteamFlowKg(row) / 1000;
+}
+
 
 // ─── Output Types ──────────────────────────────────────────────────────────
 
@@ -187,7 +297,7 @@ function ComputeHistogramData(rows: InterventionDTO[]): HistogramResult {
     const count = group.length;
     cumulativeInterventions += count;
     const remaining = totalLeaks - cumulativeInterventions;
-    const resolvedKg = group.reduce((s, r) => s + (r.SteamFlowKg ?? 0), 0);
+    const resolvedKg = group.reduce((s, r) => s + GetNominalSteamFlowKg(r), 0);
 
     data.push({
       Date: date,
@@ -199,7 +309,7 @@ function ComputeHistogramData(rows: InterventionDTO[]): HistogramResult {
     });
   }
 
-  const totalResolved = withRepair.reduce((s, r) => s + (r.SteamFlowKg ?? 0), 0);
+  const totalResolved = withRepair.reduce((s, r) => s + GetNominalSteamFlowKg(r), 0);
   const avg = withRepair.length > 0 ? totalResolved / withRepair.length : 0;
 
   return {
@@ -217,7 +327,7 @@ function ComputeLOCData(
   steamPrice: number,
   timeFrame: 'day' | 'week' | 'month' | 'year',
 ): LOCResult {
-  const totalLoc = rows.reduce((acc, r) => acc + ((r.SteamFlowTonne ?? 0) * steamPrice * 24 * 365), 0);
+  const totalLoc = rows.reduce((acc, r) => acc + (GetNominalSteamFlowTonne(r) * steamPrice * 24 * 365), 0);
 
   const withRepair = rows
     .filter((r) => r.RepairDate && r.InspectionDate)
@@ -238,7 +348,7 @@ function ComputeLOCData(
     const deltaDays = Math.max(0, (repDate.getTime() - inspDate.getTime()) / 86400000);
     totalDays += deltaDays;
 
-    const flowTonne = r.SteamFlowTonne ?? 0;
+    const flowTonne = GetNominalSteamFlowTonne(r);
     const annualValue = flowTonne * steamPrice * 24 * 365;
     remainingLoc -= annualValue;
     cumulativeGain += annualValue;
@@ -286,7 +396,7 @@ function ComputeRLData(
     const inspDate = new Date(r.InspectionDate);
     const repDate = new Date(r.RepairDate!);
     const deltaHours = Math.max(0, (repDate.getTime() - inspDate.getTime()) / 3600000);
-    const flowTonne = r.SteamFlowTonne ?? 0;
+    const flowTonne = GetNominalSteamFlowTonne(r);
     crl += flowTonne * steamPrice * deltaHours;
 
     points.push({
@@ -379,7 +489,7 @@ function ComputeCO2ETrendData(
   const points: TrendDataPoint[] = [];
 
   for (const r of sorted) {
-    const flowKg = r.SteamFlowKg ?? 0;
+    const flowKg = GetNominalSteamFlowKg(r);
     // V1 logic: status 0 = Chiuso (closed), status 1 = Aperto (open)
     const isClosed = r.Status === 0;
 
