@@ -197,6 +197,7 @@ export interface IInterventionAdapter {
   GetPriorityTrackingWeek(weekStart: Date): Promise<PriorityTrackingWeekResult>;
   GetPriorityTrackingTimeline(weekStart: Date): Promise<PriorityTrackingTimelineResult>;
   MarkLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
+  ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
   UpdatePriorityTrackingItem(itemId: number, patch: {
     Selection?: boolean;
     PS9?: boolean;

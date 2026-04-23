@@ -826,6 +826,32 @@ export class InterventionAdapter implements IInterventionAdapter {
     )
   }
 
+  async ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void> {
+    await this.EnsurePriorityTrackingTables()
+
+    await Sequelize.query(
+      `UPDATE priority_tracking_items
+       SET executed = 0,
+           executed_at = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = (
+         SELECT latest.id
+         FROM (
+           SELECT i.id
+           FROM priority_tracking_items i
+           INNER JOIN priority_tracking_sessions s ON s.id = i.session_id
+           WHERE i.intervention_id = :interventionId
+           ORDER BY s.week_start_date DESC, s.id DESC
+           LIMIT 1
+         ) AS latest
+       )`,
+      {
+        replacements: { interventionId },
+        type: QueryTypes.UPDATE,
+      },
+    )
+  }
+
   async FindById(id: number): Promise<InterventionAttributes | null> {
     const row = await Intervention.findByPk(id, {
       include: [

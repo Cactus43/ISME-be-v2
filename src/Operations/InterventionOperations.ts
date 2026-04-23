@@ -310,6 +310,12 @@ export class InterventionOperations implements IInterventionOperations {
     const row = await this._interventionAdapter.Update(id, updateData);
     if (!row) throw new NotFoundError('Intervention not found');
 
+    if (Number(row.status) !== 1 || row.repair_date != null) {
+      await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(id)
+    } else {
+      await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(id)
+    }
+
     this._log.info({ interventionId: id }, 'Intervention updated');
     this._eventBus.Publish({ Type: 'Intervention.Updated', Source: 'backoffice', Timestamp: new Date(), Context: context, Payload: { InterventionId: id, Fields: Object.keys(input) } });
     return OperationResult.Ok(InterventionDTO.FromModel(row));
@@ -578,6 +584,8 @@ export class InterventionOperations implements IInterventionOperations {
             const IsClosed = Number(NextStatus) !== 1 || NextRepairDate != null;
             if (IsClosed) {
               await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(serverId);
+            } else {
+              await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(serverId)
             }
 
             if (fotoPerdita) {
