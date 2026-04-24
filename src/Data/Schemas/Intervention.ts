@@ -142,7 +142,8 @@ export type ToggleDeleteInput = z.infer<typeof TOGGLE_DELETE_SCHEMA>;
 // ─── Weekly Priority Tracking ─────────────────────────────────────────────
 
 export const PRIORITY_TRACKING_QUERY_SCHEMA = z.object({
-  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mode: z.enum(['planning', 'in_progress']).optional(),
 });
 
 export const MOBILE_SYNC_PULL_QUERY_SCHEMA = z.object({

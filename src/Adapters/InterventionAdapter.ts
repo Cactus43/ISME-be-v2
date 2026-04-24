@@ -607,6 +607,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         PlumeLength: Row.plume_length,
         PlumeSpec: Row.plume_spec,
         SteamFlowKg: Row.steam_flow_kg,
+        EstimatedTh: flowTonne,
         InterventionType: Row.intervention_type,
         Euro: this.ComputePriorityTrackingEuroAt(flowTonne, new Date(Row.inspection_date), ExecutedAt),
         ExecutedAt,
@@ -888,6 +889,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           PlumeLength: Base.plume_length,
           PlumeSpec: Base.plume_spec,
           SteamFlowKg: Base.steam_flow_kg,
+          EstimatedTh: FlowTonne,
           InterventionType: Base.intervention_type,
           Euro: this.ComputePriorityTrackingEuroAt(FlowTonne, new Date(Base.inspection_date), ExecutedAt),
           ExecutedAt,
@@ -900,10 +902,14 @@ export class InterventionAdapter implements IInterventionAdapter {
     }
   }
 
-  async GetPriorityTrackingItemSelection(itemId: number): Promise<boolean | null> {
+  async GetPriorityTrackingItemSelection(itemId: number, transaction?: unknown): Promise<boolean | null> {
     const Rows = await Sequelize.query<{ selection: number }>(
-      `SELECT selection FROM priority_tracking_items WHERE id = :itemId LIMIT 1`,
-      { replacements: { itemId }, type: QueryTypes.SELECT },
+      `SELECT selection FROM priority_tracking_items WHERE id = :itemId LIMIT 1${transaction ? ' FOR UPDATE' : ''}`,
+      {
+        replacements: { itemId },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
     if (!Rows[0]) return null
     return Rows[0].selection === 1
@@ -916,7 +922,7 @@ export class InterventionAdapter implements IInterventionAdapter {
     WorkPermit?: boolean;
     NonIntercettabile?: boolean;
     Rationale?: PriorityTrackingRationale | null;
-  }): Promise<void> {
+  }, transaction?: unknown): Promise<void> {
     const Fields: string[] = []
     const Replacements: Record<string, unknown> = { itemId }
 
@@ -954,11 +960,12 @@ export class InterventionAdapter implements IInterventionAdapter {
       {
         replacements: Replacements,
         type: QueryTypes.UPDATE,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
     )
   }
 
-  async AddInterventionToNextSession(itemId: number): Promise<void> {
+  async AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void> {
     // Fetch item's intervention_id and its session's week_start_date
     const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string }>(
       `SELECT pti.intervention_id, ps.week_start_date
@@ -966,7 +973,11 @@ export class InterventionAdapter implements IInterventionAdapter {
        INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
        WHERE pti.id = :itemId
        LIMIT 1`,
-      { replacements: { itemId }, type: QueryTypes.SELECT },
+      {
+        replacements: { itemId },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
     const Item = ItemRow[0]
     if (!Item) return
@@ -978,7 +989,11 @@ export class InterventionAdapter implements IInterventionAdapter {
        WHERE week_start_date > :weekStart
        ORDER BY week_start_date ASC
        LIMIT 1`,
-      { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+      {
+        replacements: { weekStart: Item.week_start_date },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
 
     if (!NextSessionRow[0]) {
@@ -995,7 +1010,11 @@ export class InterventionAdapter implements IInterventionAdapter {
          WHERE week_start_date > :weekStart
          ORDER BY week_start_date ASC
          LIMIT 1`,
-        { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+        {
+          replacements: { weekStart: Item.week_start_date },
+          type: QueryTypes.SELECT,
+          ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+        },
       )
     }
 
@@ -1007,7 +1026,11 @@ export class InterventionAdapter implements IInterventionAdapter {
       `SELECT id, selection FROM priority_tracking_items
        WHERE session_id = :sessionId AND intervention_id = :interventionId
        LIMIT 1`,
-      { replacements: { sessionId: Next.id, interventionId: Item.intervention_id }, type: QueryTypes.SELECT },
+      {
+        replacements: { sessionId: Next.id, interventionId: Item.intervention_id },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
 
     if (Existing[0]) {
@@ -1018,7 +1041,11 @@ export class InterventionAdapter implements IInterventionAdapter {
           `UPDATE priority_tracking_items
            SET selection = 0, updated_at = CURRENT_TIMESTAMP
            WHERE id = :id`,
-          { replacements: { id: Existing[0].id }, type: QueryTypes.UPDATE },
+          {
+            replacements: { id: Existing[0].id },
+            type: QueryTypes.UPDATE,
+            ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+          },
         )
       }
       return
@@ -1027,7 +1054,11 @@ export class InterventionAdapter implements IInterventionAdapter {
     // Get max rank_order in next session to append at the end
     const MaxRank = await Sequelize.query<{ max_rank: number | null }>(
       `SELECT MAX(rank_order) AS max_rank FROM priority_tracking_items WHERE session_id = :sessionId`,
-      { replacements: { sessionId: Next.id }, type: QueryTypes.SELECT },
+      {
+        replacements: { sessionId: Next.id },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
     const NextRank = (MaxRank[0]?.max_rank ?? 0) + 1
 
@@ -1038,11 +1069,12 @@ export class InterventionAdapter implements IInterventionAdapter {
       {
         replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank },
         type: QueryTypes.INSERT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
     )
   }
 
-  async RemoveInterventionFromNextSession(itemId: number): Promise<void> {
+  async RemoveInterventionFromNextSession(itemId: number, transaction?: unknown): Promise<void> {
     // Fetch item's intervention_id and its session's week_start_date
     const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string }>(
       `SELECT pti.intervention_id, ps.week_start_date
@@ -1050,7 +1082,11 @@ export class InterventionAdapter implements IInterventionAdapter {
        INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
        WHERE pti.id = :itemId
        LIMIT 1`,
-      { replacements: { itemId }, type: QueryTypes.SELECT },
+      {
+        replacements: { itemId },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
     const Item = ItemRow[0]
     if (!Item) return
@@ -1062,21 +1098,25 @@ export class InterventionAdapter implements IInterventionAdapter {
        WHERE week_start_date > :weekStart
        ORDER BY week_start_date ASC
        LIMIT 1`,
-      { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+      {
+        replacements: { weekStart: Item.week_start_date },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
     )
     const Next = NextSession[0]
     if (!Next) return
 
-    // Remove from next session only if not yet executed and not yet selected in that session
+    // Remove from next session if not yet executed (selection flag must not block deletion).
     await Sequelize.query(
       `DELETE FROM priority_tracking_items
        WHERE session_id = :sessionId
          AND intervention_id = :interventionId
-         AND executed = 0
-         AND selection = 0`,
+         AND executed = 0`,
       {
         replacements: { sessionId: Next.id, interventionId: Item.intervention_id },
         type: QueryTypes.DELETE,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
     )
   }

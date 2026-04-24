@@ -26,6 +26,27 @@ import type { ExportCsvOptions, ExportExcelOptions } from '../Data/Interfaces/IO
 
 type ControllerHandler = (req: IAuthenticatedRequest, reply: FastifyReply) => Promise<void>;
 
+function GetCurrentMonday(d: Date): Date {
+  const day = d.getDay();
+  const shift = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + shift);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function GetNextMonday(d: Date): Date {
+  const monday = GetCurrentMonday(d);
+  monday.setDate(monday.getDate() + 7);
+  return monday;
+}
+
+function ResolvePriorityTrackingWeekStart(query: PriorityTrackingQuery): Date {
+  if (query.weekStart) return new Date(`${query.weekStart}T00:00:00`);
+  const now = new Date();
+  return query.mode === 'in_progress' ? GetCurrentMonday(now) : GetNextMonday(now);
+}
+
 
 // ─── Intervention Controller ───────────────────────────────────────────────
 
@@ -129,7 +150,7 @@ export class InterventionController {
 
   private async GetPriorityTrackingWeek(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
     const query = req.query as PriorityTrackingQuery;
-    const WeekStart = new Date(`${query.weekStart}T00:00:00`);
+    const WeekStart = ResolvePriorityTrackingWeekStart(query);
     const WeekEnd = new Date(WeekStart);
     WeekEnd.setDate(WeekStart.getDate() + 6);
     const result = await this._ops.GetPriorityTrackingWeek(WeekStart, WeekEnd);
@@ -138,7 +159,7 @@ export class InterventionController {
 
   private async GetPriorityTrackingTimeline(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
     const query = req.query as PriorityTrackingQuery;
-    const WeekStart = new Date(`${query.weekStart}T00:00:00`);
+    const WeekStart = ResolvePriorityTrackingWeekStart(query);
     const WeekEnd = new Date(WeekStart);
     WeekEnd.setDate(WeekStart.getDate() + 6);
     const result = await this._ops.GetPriorityTrackingTimeline(WeekStart, WeekEnd);

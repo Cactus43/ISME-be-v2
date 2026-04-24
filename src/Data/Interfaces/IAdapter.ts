@@ -121,6 +121,7 @@ export interface PriorityTrackingItem {
   PlumeLength: string | null;
   PlumeSpec: string | null;
   SteamFlowKg: number | null;
+  EstimatedTh: number | null;
   InterventionType: number;
   Euro: number;
   ExecutedAt: Date | null;
@@ -164,6 +165,7 @@ export interface PriorityTrackingTimelineRow {
   PlumeLength: string | null;
   PlumeSpec: string | null;
   SteamFlowKg: number | null;
+  EstimatedTh: number | null;
   InterventionType: number;
   Euro: number;
   ExecutedAt: Date | null;
@@ -199,7 +201,7 @@ export interface IInterventionAdapter {
   GetPriorityTrackingTimeline(weekStart: Date): Promise<PriorityTrackingTimelineResult>;
   MarkLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
   ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
-  GetPriorityTrackingItemSelection(itemId: number): Promise<boolean | null>;
+  GetPriorityTrackingItemSelection(itemId: number, transaction?: unknown): Promise<boolean | null>;
   UpdatePriorityTrackingItem(itemId: number, patch: {
     Selection?: boolean;
     PS9?: boolean;
@@ -207,9 +209,9 @@ export interface IInterventionAdapter {
     WorkPermit?: boolean;
     NonIntercettabile?: boolean;
     Rationale?: PriorityTrackingRationale | null;
-  }): Promise<void>;
-  AddInterventionToNextSession(itemId: number): Promise<void>;
-  RemoveInterventionFromNextSession(itemId: number): Promise<void>;
+  }, transaction?: unknown): Promise<void>;
+  AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void>;
+  RemoveInterventionFromNextSession(itemId: number, transaction?: unknown): Promise<void>;
 }
 
 

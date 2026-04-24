@@ -402,6 +402,11 @@ export class InterventionOperations implements IInterventionOperations {
       if (patch.po !== undefined) AdapterPatch.PO = patch.po;
       if (patch.workPermit !== undefined) AdapterPatch.WorkPermit = patch.workPermit;
       if (patch.nonIntercettabile !== undefined) AdapterPatch.NonIntercettabile = patch.nonIntercettabile;
+
+      // If any prerequisite is withdrawn, selection must be reset as well.
+      if (patch.ps9 === false || patch.po === false || patch.workPermit === false || patch.nonIntercettabile === false) {
+        AdapterPatch.Selection = false;
+      }
     }
 
     if (patch.rationale !== undefined) {
@@ -417,21 +422,30 @@ export class InterventionOperations implements IInterventionOperations {
       }
     }
 
-    // Read current selection state BEFORE updating (needed for side-effects below)
-    const WasSelected = patch.rationale !== undefined
-      ? await this._interventionAdapter.GetPriorityTrackingItemSelection(itemId)
-      : null;
+    const t = await Sequelize.transaction();
+    try {
+      // Read current selection state BEFORE updating (needed for side-effects below).
+      // Under transaction, adapter acquires FOR UPDATE lock on the row.
+      const WasSelected = patch.rationale !== undefined
+        ? await this._interventionAdapter.GetPriorityTrackingItemSelection(itemId, t)
+        : null;
 
-    await this._interventionAdapter.UpdatePriorityTrackingItem(itemId, AdapterPatch);
+      await this._interventionAdapter.UpdatePriorityTrackingItem(itemId, AdapterPatch, t);
 
-    // If rationale was set on a previously-selected item, add it to the next session
-    if (patch.rationale != null && WasSelected === true) {
-      await this._interventionAdapter.AddInterventionToNextSession(itemId);
-    }
+      // If rationale was set on a previously-selected item, add it to the next session
+      if (patch.rationale != null && WasSelected === true) {
+        await this._interventionAdapter.AddInterventionToNextSession(itemId, t);
+      }
 
-    // If rationale was cleared, remove the intervention from the next session
-    if (patch.rationale === null) {
-      await this._interventionAdapter.RemoveInterventionFromNextSession(itemId);
+      // If rationale was cleared, remove the intervention from the next session
+      if (patch.rationale === null) {
+        await this._interventionAdapter.RemoveInterventionFromNextSession(itemId, t);
+      }
+
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      throw err;
     }
 
     return OperationResult.Void();
