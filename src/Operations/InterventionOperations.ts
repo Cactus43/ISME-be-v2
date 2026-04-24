@@ -29,15 +29,6 @@ function ToLocalIsoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function GetCurrentMonday(d: Date): Date {
-  const day = d.getDay();
-  const shift = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + shift);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-
 function GetNextMonday(d: Date): Date {
   const monday = new Date(d);
   monday.setHours(0, 0, 0, 0);
@@ -162,7 +153,7 @@ export class InterventionOperations implements IInterventionOperations {
     });
     const dtos = rows.map(InterventionDTO.FromModel);
 
-    const steamPrice = 50;
+    const steamPrice = filters.steamPrice ?? 50;
     const timeFrame = (['day', 'week', 'month', 'year'].includes(filters.timeFrame ?? '') ? filters.timeFrame : 'month') as 'day' | 'week' | 'month' | 'year';
 
     const bundle = ComputeChartBundle(dtos, steamPrice, timeFrame);
