@@ -1,4 +1,5 @@
 import { Op, QueryTypes, WhereOptions, literal } from 'sequelize';
+import { Config } from '../Config/Index';
 import { Intervention } from '../Data/Models/Intervention';
 import { User } from '../Data/Models/User';
 import { Media } from '../Data/Models/Media';
@@ -259,6 +260,22 @@ export class InterventionAdapter implements IInterventionAdapter {
         ADD COLUMN executed_at DATETIME NULL
       `)
     }
+
+    const NonIntercettabileColumn = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'priority_tracking_items'
+         AND COLUMN_NAME = 'non_intercettabile'`,
+      { type: QueryTypes.SELECT },
+    )
+
+    if (Number(NonIntercettabileColumn[0]?.c ?? 0) === 0) {
+      await Sequelize.query(`
+        ALTER TABLE priority_tracking_items
+        ADD COLUMN non_intercettabile TINYINT(1) NOT NULL DEFAULT 0
+      `)
+    }
   }
 
   async EnsurePriorityTrackingSchema(): Promise<void> {
@@ -315,9 +332,18 @@ export class InterventionAdapter implements IInterventionAdapter {
            ORDER BY ps.week_start_date DESC, ps.id DESC, pti.id DESC
            LIMIT 1
          ), 0) = 0
+         AND COALESCE((
+           SELECT pti.selection
+           FROM priority_tracking_items pti
+           INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
+           WHERE pti.intervention_id = iv.id
+             AND ps.week_start_date < :weekStart
+           ORDER BY ps.week_start_date DESC, ps.id DESC, pti.id DESC
+           LIMIT 1
+         ), 0) = 0
        ORDER BY iv.inspection_date ASC
-       LIMIT 5`,
-      { type: QueryTypes.SELECT },
+       LIMIT ${Config.PriorityTrackingLimit}`,
+      { replacements: { weekStart: WeekStartKey }, type: QueryTypes.SELECT },
     )
 
     const Ranked = [...TopOldestOpen].sort((A, B) => (Number(B.steam_flow_kg ?? 0) - Number(A.steam_flow_kg ?? 0)))
@@ -339,6 +365,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       ps9: number;
       po: number;
       work_permit: number;
+      non_intercettabile: number;
     }>()
 
     if (PreviousSession[0]?.id && Ranked.length > 0) {
@@ -348,8 +375,9 @@ export class InterventionAdapter implements IInterventionAdapter {
         ps9: number;
         po: number;
         work_permit: number;
+        non_intercettabile: number;
       }>(
-        `SELECT intervention_id, selection, ps9, po, work_permit
+        `SELECT intervention_id, selection, ps9, po, work_permit, non_intercettabile
          FROM priority_tracking_items
          WHERE session_id = :sessionId
            AND intervention_id IN (:interventionIds)`,
@@ -368,6 +396,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           ps9: Item.ps9,
           po: Item.po,
           work_permit: Item.work_permit,
+          non_intercettabile: Item.non_intercettabile,
         })
       }
     }
@@ -377,14 +406,15 @@ export class InterventionAdapter implements IInterventionAdapter {
       const PreviousValues = PreviousByIntervention.get(Row.id)
       await Sequelize.query(
         `INSERT INTO priority_tracking_items
-          (session_id, intervention_id, rank_order, selection, ps9, po, work_permit)
-         VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit)
+          (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
+         VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :nonIntercettabile)
          ON DUPLICATE KEY UPDATE
            rank_order = VALUES(rank_order),
            selection = VALUES(selection),
            ps9 = VALUES(ps9),
            po = VALUES(po),
-           work_permit = VALUES(work_permit)`,
+           work_permit = VALUES(work_permit),
+           non_intercettabile = VALUES(non_intercettabile)`,
         {
           replacements: {
             sessionId: CreatedSessionId,
@@ -394,10 +424,57 @@ export class InterventionAdapter implements IInterventionAdapter {
             ps9: PreviousValues?.ps9 ?? 0,
             po: PreviousValues?.po ?? 0,
             workPermit: PreviousValues?.work_permit ?? 0,
+            nonIntercettabile: PreviousValues?.non_intercettabile ?? 0,
           },
           type: QueryTypes.INSERT,
         },
       )
+    }
+
+    // Carry over previously-selected, non-executed items from the previous session
+    if (PreviousSession[0]?.id) {
+      const SelectedNotExecuted = await Sequelize.query<{
+        intervention_id: number;
+        ps9: number;
+        po: number;
+        work_permit: number;
+        non_intercettabile: number;
+      }>(
+        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+         FROM priority_tracking_items
+         WHERE session_id = :sessionId
+           AND selection = 1
+           AND executed = 0
+           AND intervention_id NOT IN (
+             SELECT intervention_id FROM priority_tracking_items WHERE session_id = :newSessionId
+           )`,
+        {
+          replacements: { sessionId: PreviousSession[0].id, newSessionId: CreatedSessionId },
+          type: QueryTypes.SELECT,
+        },
+      )
+
+      for (let Idx = 0; Idx < SelectedNotExecuted.length; Idx += 1) {
+        const Extra = SelectedNotExecuted[Idx]
+        await Sequelize.query(
+          `INSERT INTO priority_tracking_items
+            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
+           VALUES (:sessionId, :interventionId, :rankOrder, 1, :ps9, :po, :workPermit, :nonIntercettabile)
+           ON DUPLICATE KEY UPDATE rank_order = VALUES(rank_order)`,
+          {
+            replacements: {
+              sessionId: CreatedSessionId,
+              interventionId: Extra.intervention_id,
+              rankOrder: Ranked.length + Idx + 1,
+              ps9: Extra.ps9,
+              po: Extra.po,
+              workPermit: Extra.work_permit,
+              nonIntercettabile: Extra.non_intercettabile,
+            },
+            type: QueryTypes.INSERT,
+          },
+        )
+      }
     }
 
     return CreatedSessionId
@@ -552,6 +629,69 @@ export class InterventionAdapter implements IInterventionAdapter {
     if (!Sessions[0]) throw new Error('Priority tracking session not found')
     const AnchorSession = Sessions[0]
 
+    // ── Lazy carry-over ──────────────────────────────────────────────────────
+    // Ensure any item from the previous session that was selected but neither
+    // executed nor given a rationale is present in this session too.
+    const PrevSession = await Sequelize.query<{ id: number }>(
+      `SELECT id FROM priority_tracking_sessions
+       WHERE week_start_date < :weekStart
+       ORDER BY week_start_date DESC LIMIT 1`,
+      { replacements: { weekStart: WeekStartKey }, type: QueryTypes.SELECT },
+    )
+    // ── Lazy carry-over ──────────────────────────────────────────────────────
+    // Only run for the current week (In Corso mode).
+    // Do NOT run for future weeks (Planning mode) or past weeks (historical
+    // data must not be mutated retroactively).
+    const TodayMondayStr = ToLocalIsoDate((() => {
+      const d = new Date(); d.setHours(0,0,0,0)
+      const day = d.getDay(); const shift = day === 0 ? -6 : 1 - day
+      d.setDate(d.getDate() + shift); return d
+    })())
+    if (WeekStartKey === TodayMondayStr && PrevSession[0]) {
+      const Unfinished = await Sequelize.query<{
+        intervention_id: number; ps9: number; po: number;
+        work_permit: number; non_intercettabile: number;
+      }>(
+        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+         FROM priority_tracking_items
+         WHERE session_id = :prevId
+           AND selection = 1
+           AND executed = 0
+           AND rationale IS NULL
+           AND intervention_id NOT IN (
+             SELECT intervention_id FROM priority_tracking_items WHERE session_id = :anchorId
+           )`,
+        { replacements: { prevId: PrevSession[0].id, anchorId: AnchorSession.id }, type: QueryTypes.SELECT },
+      )
+      if (Unfinished.length > 0) {
+        const MaxRankRow = await Sequelize.query<{ max_rank: number | null }>(
+          `SELECT MAX(rank_order) AS max_rank FROM priority_tracking_items WHERE session_id = :anchorId`,
+          { replacements: { anchorId: AnchorSession.id }, type: QueryTypes.SELECT },
+        )
+        let NextRank = (MaxRankRow[0]?.max_rank ?? 0) + 1
+        for (const Item of Unfinished) {
+          await Sequelize.query(
+            `INSERT INTO priority_tracking_items
+              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
+             VALUES (:sessionId, :interventionId, :rankOrder, 1, :ps9, :po, :workPermit, :nonIntercettabile, NULL, 0)
+             ON DUPLICATE KEY UPDATE rank_order = rank_order`,
+            {
+              replacements: {
+                sessionId: AnchorSession.id,
+                interventionId: Item.intervention_id,
+                rankOrder: NextRank++,
+                ps9: Item.ps9, po: Item.po,
+                workPermit: Item.work_permit,
+                nonIntercettabile: Item.non_intercettabile,
+              },
+              type: QueryTypes.INSERT,
+            },
+          )
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const AnchorRows = await Sequelize.query<{
       intervention_id: number;
       rank_order: number;
@@ -640,6 +780,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       ps9: number;
       po: number;
       work_permit: number;
+      non_intercettabile: number;
       rationale: PriorityTrackingRationale | null;
       executed: number;
     }>(
@@ -651,6 +792,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          i.ps9,
          i.po,
          i.work_permit,
+         i.non_intercettabile,
          i.rationale,
          i.executed AS executed
        FROM priority_tracking_items i
@@ -705,6 +847,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           PS9: boolean;
           PO: boolean;
           WorkPermit: boolean;
+          NonIntercettabile: boolean;
           Rationale: PriorityTrackingRationale | null;
           Executed: boolean;
         }> = {}
@@ -717,6 +860,7 @@ export class InterventionAdapter implements IInterventionAdapter {
             PS9: Item.ps9 === 1,
             PO: Item.po === 1,
             WorkPermit: Item.work_permit === 1,
+            NonIntercettabile: Item.non_intercettabile === 1,
             Rationale: Item.rationale,
             Executed: Item.executed === 1,
           }
@@ -756,11 +900,21 @@ export class InterventionAdapter implements IInterventionAdapter {
     }
   }
 
+  async GetPriorityTrackingItemSelection(itemId: number): Promise<boolean | null> {
+    const Rows = await Sequelize.query<{ selection: number }>(
+      `SELECT selection FROM priority_tracking_items WHERE id = :itemId LIMIT 1`,
+      { replacements: { itemId }, type: QueryTypes.SELECT },
+    )
+    if (!Rows[0]) return null
+    return Rows[0].selection === 1
+  }
+
   async UpdatePriorityTrackingItem(itemId: number, patch: {
     Selection?: boolean;
     PS9?: boolean;
     PO?: boolean;
     WorkPermit?: boolean;
+    NonIntercettabile?: boolean;
     Rationale?: PriorityTrackingRationale | null;
   }): Promise<void> {
     const Fields: string[] = []
@@ -782,6 +936,10 @@ export class InterventionAdapter implements IInterventionAdapter {
       Fields.push('work_permit = :workPermit')
       Replacements.workPermit = patch.WorkPermit ? 1 : 0
     }
+    if (patch.NonIntercettabile !== undefined) {
+      Fields.push('non_intercettabile = :nonIntercettabile')
+      Replacements.nonIntercettabile = patch.NonIntercettabile ? 1 : 0
+    }
     if (patch.Rationale !== undefined) {
       Fields.push('rationale = :rationale')
       Replacements.rationale = patch.Rationale
@@ -800,9 +958,134 @@ export class InterventionAdapter implements IInterventionAdapter {
     )
   }
 
+  async AddInterventionToNextSession(itemId: number): Promise<void> {
+    // Fetch item's intervention_id and its session's week_start_date
+    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string }>(
+      `SELECT pti.intervention_id, ps.week_start_date
+       FROM priority_tracking_items pti
+       INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
+       WHERE pti.id = :itemId
+       LIMIT 1`,
+      { replacements: { itemId }, type: QueryTypes.SELECT },
+    )
+    const Item = ItemRow[0]
+    if (!Item) return
+
+    // Find the session immediately after this one, or create it if missing
+    let NextSessionRow = await Sequelize.query<{ id: number; week_start_date: string; week_end_date: string }>(
+      `SELECT id, week_start_date, week_end_date
+       FROM priority_tracking_sessions
+       WHERE week_start_date > :weekStart
+       ORDER BY week_start_date ASC
+       LIMIT 1`,
+      { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+    )
+
+    if (!NextSessionRow[0]) {
+      // Next session doesn't exist yet — create it for the Monday after the current session
+      const CurrentStart = new Date(`${Item.week_start_date}T00:00:00`)
+      const NextStart = new Date(CurrentStart)
+      NextStart.setDate(NextStart.getDate() + 7)
+      const NextEnd = new Date(NextStart)
+      NextEnd.setDate(NextEnd.getDate() + 6)
+      await this.EnsurePriorityTrackingWeek(NextStart, NextEnd)
+      NextSessionRow = await Sequelize.query<{ id: number; week_start_date: string; week_end_date: string }>(
+        `SELECT id, week_start_date, week_end_date
+         FROM priority_tracking_sessions
+         WHERE week_start_date > :weekStart
+         ORDER BY week_start_date ASC
+         LIMIT 1`,
+        { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+      )
+    }
+
+    const Next = NextSessionRow[0]
+    if (!Next) return
+
+    // Check if intervention is already in next session
+    const Existing = await Sequelize.query<{ id: number; selection: number }>(
+      `SELECT id, selection FROM priority_tracking_items
+       WHERE session_id = :sessionId AND intervention_id = :interventionId
+       LIMIT 1`,
+      { replacements: { sessionId: Next.id, interventionId: Item.intervention_id }, type: QueryTypes.SELECT },
+    )
+
+    if (Existing[0]) {
+      // Item is already in next session (e.g. carried over as selected=1).
+      // Reset selection to 0 so it appears in the planning view as unplanned.
+      if (Existing[0].selection === 1) {
+        await Sequelize.query(
+          `UPDATE priority_tracking_items
+           SET selection = 0, updated_at = CURRENT_TIMESTAMP
+           WHERE id = :id`,
+          { replacements: { id: Existing[0].id }, type: QueryTypes.UPDATE },
+        )
+      }
+      return
+    }
+
+    // Get max rank_order in next session to append at the end
+    const MaxRank = await Sequelize.query<{ max_rank: number | null }>(
+      `SELECT MAX(rank_order) AS max_rank FROM priority_tracking_items WHERE session_id = :sessionId`,
+      { replacements: { sessionId: Next.id }, type: QueryTypes.SELECT },
+    )
+    const NextRank = (MaxRank[0]?.max_rank ?? 0) + 1
+
+    await Sequelize.query(
+      `INSERT INTO priority_tracking_items
+        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
+       VALUES (:sessionId, :interventionId, :rankOrder, 0, 0, 0, 0, 0, NULL, 0)`,
+      {
+        replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank },
+        type: QueryTypes.INSERT,
+      },
+    )
+  }
+
+  async RemoveInterventionFromNextSession(itemId: number): Promise<void> {
+    // Fetch item's intervention_id and its session's week_start_date
+    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string }>(
+      `SELECT pti.intervention_id, ps.week_start_date
+       FROM priority_tracking_items pti
+       INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
+       WHERE pti.id = :itemId
+       LIMIT 1`,
+      { replacements: { itemId }, type: QueryTypes.SELECT },
+    )
+    const Item = ItemRow[0]
+    if (!Item) return
+
+    // Find the session immediately after this one
+    const NextSession = await Sequelize.query<{ id: number }>(
+      `SELECT id
+       FROM priority_tracking_sessions
+       WHERE week_start_date > :weekStart
+       ORDER BY week_start_date ASC
+       LIMIT 1`,
+      { replacements: { weekStart: Item.week_start_date }, type: QueryTypes.SELECT },
+    )
+    const Next = NextSession[0]
+    if (!Next) return
+
+    // Remove from next session only if not yet executed and not yet selected in that session
+    await Sequelize.query(
+      `DELETE FROM priority_tracking_items
+       WHERE session_id = :sessionId
+         AND intervention_id = :interventionId
+         AND executed = 0
+         AND selection = 0`,
+      {
+        replacements: { sessionId: Next.id, interventionId: Item.intervention_id },
+        type: QueryTypes.DELETE,
+      },
+    )
+  }
+
   async MarkLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void> {
     await this.EnsurePriorityTrackingTables()
 
+    // Mark executed in the most recent session that has already started (current or past).
+    // We must NOT mark future sessions — those are carry-overs that haven't happened yet.
     await Sequelize.query(
       `UPDATE priority_tracking_items
        SET executed = 1,
@@ -815,6 +1098,7 @@ export class InterventionAdapter implements IInterventionAdapter {
            FROM priority_tracking_items i
            INNER JOIN priority_tracking_sessions s ON s.id = i.session_id
            WHERE i.intervention_id = :interventionId
+             AND s.week_start_date <= CURDATE()
            ORDER BY s.week_start_date DESC, s.id DESC
            LIMIT 1
          ) AS latest
@@ -824,11 +1108,25 @@ export class InterventionAdapter implements IInterventionAdapter {
         type: QueryTypes.UPDATE,
       },
     )
+
+    // Remove the item from any future sessions — it has been executed and
+    // no longer needs to be planned or carried over.
+    await Sequelize.query(
+      `DELETE pti FROM priority_tracking_items pti
+       INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
+       WHERE pti.intervention_id = :interventionId
+         AND ps.week_start_date > CURDATE()`,
+      {
+        replacements: { interventionId },
+        type: QueryTypes.DELETE,
+      },
+    )
   }
 
   async ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void> {
     await this.EnsurePriorityTrackingTables()
 
+    // Reset only in the most recent current/past session — same scope as Mark.
     await Sequelize.query(
       `UPDATE priority_tracking_items
        SET executed = 0,
@@ -841,6 +1139,7 @@ export class InterventionAdapter implements IInterventionAdapter {
            FROM priority_tracking_items i
            INNER JOIN priority_tracking_sessions s ON s.id = i.session_id
            WHERE i.intervention_id = :interventionId
+             AND s.week_start_date <= CURDATE()
            ORDER BY s.week_start_date DESC, s.id DESC
            LIMIT 1
          ) AS latest

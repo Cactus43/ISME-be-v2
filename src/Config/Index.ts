@@ -57,4 +57,6 @@ export const Config = {
 
   LogLevel: _optional('LOG_LEVEL', 'info') as 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace',
 
+  PriorityTrackingLimit: parseInt(_optional('PRIORITY_TRACKING_LIMIT', '15'), 10),
+
 } as const;

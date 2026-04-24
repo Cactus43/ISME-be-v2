@@ -148,6 +148,7 @@ export interface PriorityTrackingTimelineCell {
   PS9: boolean;
   PO: boolean;
   WorkPermit: boolean;
+  NonIntercettabile: boolean;
   Rationale: PriorityTrackingRationale | null;
   Executed: boolean;
 }
@@ -198,13 +199,17 @@ export interface IInterventionAdapter {
   GetPriorityTrackingTimeline(weekStart: Date): Promise<PriorityTrackingTimelineResult>;
   MarkLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
   ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
+  GetPriorityTrackingItemSelection(itemId: number): Promise<boolean | null>;
   UpdatePriorityTrackingItem(itemId: number, patch: {
     Selection?: boolean;
     PS9?: boolean;
     PO?: boolean;
     WorkPermit?: boolean;
+    NonIntercettabile?: boolean;
     Rationale?: PriorityTrackingRationale | null;
   }): Promise<void>;
+  AddInterventionToNextSession(itemId: number): Promise<void>;
+  RemoveInterventionFromNextSession(itemId: number): Promise<void>;
 }
 
 

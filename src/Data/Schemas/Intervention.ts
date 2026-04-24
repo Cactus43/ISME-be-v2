@@ -157,6 +157,7 @@ export const PRIORITY_TRACKING_UPDATE_SCHEMA = z.object({
   ps9: z.boolean().optional(),
   po: z.boolean().optional(),
   workPermit: z.boolean().optional(),
+  nonIntercettabile: z.boolean().optional(),
   rationale: z.enum([
     'Mancanza Operatore',
     'Difficolta Intercetto',

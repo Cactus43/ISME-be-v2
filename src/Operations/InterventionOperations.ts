@@ -38,6 +38,15 @@ function GetCurrentMonday(d: Date): Date {
   return monday;
 }
 
+function GetNextMonday(d: Date): Date {
+  const monday = new Date(d);
+  monday.setHours(0, 0, 0, 0);
+  const day = monday.getDay();
+  const daysUntil = day === 1 ? 7 : (1 - day + 7) % 7;
+  monday.setDate(monday.getDate() + daysUntil);
+  return monday;
+}
+
 function ParseMobileSyncCursor(cursor: string | null): { UpdatedAt: Date; Id: number } | null {
   if (!cursor) return null
   const [UpdatedAtRaw, IdRaw] = cursor.split('|')
@@ -342,18 +351,18 @@ export class InterventionOperations implements IInterventionOperations {
   }
 
   async GetPriorityTrackingWeek(weekStart: Date, _weekEnd: Date) {
-    const CurrentWeekStart = GetCurrentMonday(new Date());
-    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
-      throw new BadRequestError('Future priority-tracking weeks are not allowed');
+    const NextWeekStart = GetNextMonday(new Date());
+    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(NextWeekStart)) {
+      throw new BadRequestError('Priority-tracking weeks beyond next week are not allowed');
     }
     const data = await this._interventionAdapter.GetPriorityTrackingWeek(weekStart);
     return OperationResult.Ok(data);
   }
 
   async GetPriorityTrackingTimeline(weekStart: Date, _weekEnd: Date) {
-    const CurrentWeekStart = GetCurrentMonday(new Date());
-    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(CurrentWeekStart)) {
-      throw new BadRequestError('Future priority-tracking weeks are not allowed');
+    const NextWeekStart = GetNextMonday(new Date());
+    if (ToLocalIsoDate(weekStart) > ToLocalIsoDate(NextWeekStart)) {
+      throw new BadRequestError('Priority-tracking weeks beyond next week are not allowed');
     }
     const data = await this._interventionAdapter.GetPriorityTrackingTimeline(weekStart);
     return OperationResult.Ok(data);
@@ -366,6 +375,7 @@ export class InterventionOperations implements IInterventionOperations {
       ps9?: boolean;
       po?: boolean;
       workPermit?: boolean;
+      nonIntercettabile?: boolean;
       rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
     },
     context: RequestContext,
@@ -381,23 +391,49 @@ export class InterventionOperations implements IInterventionOperations {
       PS9?: boolean;
       PO?: boolean;
       WorkPermit?: boolean;
+      NonIntercettabile?: boolean;
       Rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
     } = {};
 
-    if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined) {
+    if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined || patch.nonIntercettabile !== undefined) {
       if (!CanApproval) throw new BadRequestError('Insufficient permissions for approval fields');
       if (patch.selection !== undefined) AdapterPatch.Selection = patch.selection;
       if (patch.ps9 !== undefined) AdapterPatch.PS9 = patch.ps9;
       if (patch.po !== undefined) AdapterPatch.PO = patch.po;
       if (patch.workPermit !== undefined) AdapterPatch.WorkPermit = patch.workPermit;
+      if (patch.nonIntercettabile !== undefined) AdapterPatch.NonIntercettabile = patch.nonIntercettabile;
     }
 
     if (patch.rationale !== undefined) {
       if (!CanExecution) throw new BadRequestError('Insufficient permissions for rationale');
       AdapterPatch.Rationale = patch.rationale;
+      // When rationale is set, deselect the item
+      if (patch.rationale !== null) {
+        AdapterPatch.Selection = false;
+      }
+      // When rationale is cleared, reselect the item
+      if (patch.rationale === null) {
+        AdapterPatch.Selection = true;
+      }
     }
 
+    // Read current selection state BEFORE updating (needed for side-effects below)
+    const WasSelected = patch.rationale !== undefined
+      ? await this._interventionAdapter.GetPriorityTrackingItemSelection(itemId)
+      : null;
+
     await this._interventionAdapter.UpdatePriorityTrackingItem(itemId, AdapterPatch);
+
+    // If rationale was set on a previously-selected item, add it to the next session
+    if (patch.rationale != null && WasSelected === true) {
+      await this._interventionAdapter.AddInterventionToNextSession(itemId);
+    }
+
+    // If rationale was cleared, remove the intervention from the next session
+    if (patch.rationale === null) {
+      await this._interventionAdapter.RemoveInterventionFromNextSession(itemId);
+    }
+
     return OperationResult.Void();
   }
 

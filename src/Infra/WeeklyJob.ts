@@ -111,7 +111,7 @@ export class WeeklyJob {
 
   private async _RunJob(now: Date): Promise<void> {
     try {
-      const weekStart = GetCurrentMonday(now);
+      const weekStart = GetNextMonday(now);
       const weekEnd = AddDays(weekStart, 6);
       this._log.info(
         { weekStart: ToLocalIsoDate(weekStart), weekEnd: ToLocalIsoDate(weekEnd) },
