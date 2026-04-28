@@ -200,6 +200,12 @@ export interface IInterventionAdapter {
   GetPriorityTrackingWeek(weekStart: Date): Promise<PriorityTrackingWeekResult>;
   GetPriorityTrackingTimeline(weekStart: Date): Promise<PriorityTrackingTimelineResult>;
   MarkLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
+  GetPriorityTrackingItemApprovalState(itemId: number, transaction?: unknown): Promise<{
+    PS9: boolean;
+    PO: boolean;
+    WorkPermit: boolean;
+    NonIntercettabile: boolean;
+  } | null>
   ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
   GetPriorityTrackingItemSelection(itemId: number, transaction?: unknown): Promise<boolean | null>;
   UpdatePriorityTrackingItem(itemId: number, patch: {
@@ -212,6 +218,7 @@ export interface IInterventionAdapter {
   }, transaction?: unknown): Promise<void>;
   AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void>;
   RemoveInterventionFromNextSession(itemId: number, transaction?: unknown): Promise<void>;
+  AddOpenInterventionToNextSessionIfSelected(interventionId: number): Promise<void>;
 }
 
 

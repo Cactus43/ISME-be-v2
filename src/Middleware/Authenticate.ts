@@ -3,6 +3,9 @@ import type { IAuthenticatedRequest } from '../Data/Types/Http';
 import { AccessToken } from '../Data/Models/AccessToken';
 import { User } from '../Data/Models/User';
 import { JwtSignature } from '../Utils/Crypto';
+import { Logger } from '../Utils/Logger';
+
+const _authLog = Logger.child({ module: 'auth' });
 
 function NormalizeRole(Role: string): 'admin' | 'approval_manager' | 'execution_manager' | 'operator' | 'viewer' {
   if (Role === 'admin' || Role === 'approval_manager' || Role === 'execution_manager' || Role === 'operator' || Role === 'viewer') {
@@ -47,7 +50,7 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     }
 
     if (!RawToken || !ResolvedSource) {
-      console.log('[Auth] 401 Authentication required |', request.method, request.raw.url, '| authHeader:', request.headers.authorization?.slice(0, 30) ?? 'NONE', '| source:', Source ?? 'any');
+      _authLog.warn({ method: request.method, url: request.raw.url, source: Source ?? 'any' }, 'Authentication required');
       reply.status(401).send({ Error: 'Authentication required' });
       return;
     }
@@ -56,7 +59,7 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     const Signature = JwtSignature(RawToken);
 
     if (!Signature) {
-      console.log('[Auth] 401 Malformed token |', request.method, request.raw.url, '| tokenLen:', RawToken.length, '| parts:', RawToken.split('.').length);
+      _authLog.warn({ method: request.method, url: request.raw.url, tokenLen: RawToken.length }, 'Malformed token');
       reply.status(401).send({ Error: 'Malformed token' });
       return;
     }
@@ -80,19 +83,24 @@ export function Authenticate(Source?: 'backoffice' | 'mobile') {
     if (!TokenRecord || !TokenRecord.User) {
       // Diagnostic: check if the signature exists at all (maybe revoked or wrong source)
       const anyRecord = await AccessToken.findOne({ where: { signature: Signature }, attributes: ['id', 'source', 'revoked_at', 'expires_at'] });
-      console.log('[Auth] 401 Invalid or expired session |', request.method, request.raw.url,
-        '| sig:', Signature.slice(0, 12) + '...',
-        '| resolvedSource:', ResolvedSource,
-        '| anyRecordInDB:', anyRecord ? `id=${anyRecord.id} source=${anyRecord.source} revoked=${anyRecord.revoked_at} expires=${anyRecord.expires_at}` : 'NONE');
+      _authLog.warn({
+        method: request.method,
+        url: request.raw.url,
+        sig: Signature.slice(0, 12),
+        resolvedSource: ResolvedSource,
+        dbRecord: anyRecord ? { id: anyRecord.id, source: anyRecord.source, revoked: anyRecord.revoked_at, expires: anyRecord.expires_at } : null,
+      }, 'Invalid or expired session');
       reply.status(401).send({ Error: 'Invalid or expired session' });
       return;
     }
 
     if (new Date(TokenRecord.expires_at) < new Date()) {
-      console.log('[Auth] 401 Session expired |', request.method, request.raw.url,
-        '| sig:', Signature.slice(0, 12) + '...',
-        '| expiresAt:', TokenRecord.expires_at,
-        '| now:', new Date().toISOString());
+      _authLog.warn({
+        method: request.method,
+        url: request.raw.url,
+        sig: Signature.slice(0, 12),
+        expiresAt: TokenRecord.expires_at,
+      }, 'Session expired');
       reply.status(401).send({ Error: 'Session expired' });
       return;
     }

@@ -37,10 +37,11 @@ export function BuildMediaStorageTarget(interventionId: number, slot: MediaSlot,
   const folder = MEDIA_SLOT_FOLDERS[slot];
   const filename = `${interventionId}_${slot}${extension}`;
   const storagePath = `${folder}/${filename}`;
-  const absolutePath = path.resolve(Config.DataPath, storagePath);
   const dataRoot = path.resolve(Config.DataPath);
+  const absolutePath = path.resolve(dataRoot, storagePath);
+  const relativePath = path.relative(dataRoot, absolutePath);
 
-  if (!absolutePath.startsWith(dataRoot)) {
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
     throw new BadRequestError('Invalid media storage path');
   }
 

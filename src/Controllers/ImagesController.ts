@@ -1,4 +1,5 @@
-import { createReadStream, existsSync } from 'fs';
+import { createReadStream } from 'fs';
+import { realpath, stat } from 'fs/promises';
 import path from 'path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Config } from '../Config/Index';
@@ -21,35 +22,54 @@ export class ImagesController {
   }
 
   private async _serveFotoPerdita(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    this._servePhoto(req, reply, 'fotoPerdita');
+    await this._servePhoto(req, reply, 'fotoPerdita');
   }
 
   private async _serveFotoRiparazione(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    this._servePhoto(req, reply, 'fotoRiparazione');
+    await this._servePhoto(req, reply, 'fotoRiparazione');
   }
 
-  private _servePhoto(req: FastifyRequest, reply: FastifyReply, folder: string): void {
+  private async _servePhoto(req: FastifyRequest, reply: FastifyReply, folder: string): Promise<void> {
     const name = (req.params as Record<string, string>).name;
-    if (!name) {
+    if (!name || path.basename(name) !== name || name.includes('\0')) {
       reply.status(404).send();
       return;
     }
 
-    const filePath = path.resolve(Config.DataPath, folder, name);
     const dataRoot = path.resolve(Config.DataPath);
+    const filePath = path.resolve(dataRoot, folder, name);
+    const relativePath = path.relative(dataRoot, filePath);
 
-    if (!filePath.startsWith(dataRoot)) {
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
       reply.status(403).send();
       return;
     }
 
-    if (!existsSync(filePath)) {
-      reply.status(404).send();
-      return;
-    }
+    try {
+      const [resolvedDataRoot, resolvedFilePath] = await Promise.all([
+        realpath(dataRoot),
+        realpath(filePath),
+      ]);
+      const normalizedRoot = resolvedDataRoot.endsWith(path.sep)
+        ? resolvedDataRoot
+        : `${resolvedDataRoot}${path.sep}`;
 
-    reply.type(this._getMimeType(filePath));
-    reply.send(createReadStream(filePath));
+      if (!resolvedFilePath.startsWith(normalizedRoot)) {
+        reply.status(403).send();
+        return;
+      }
+
+      const fileStat = await stat(resolvedFilePath);
+      if (!fileStat.isFile()) {
+        reply.status(404).send();
+        return;
+      }
+
+      reply.type(this._getMimeType(resolvedFilePath));
+      reply.send(createReadStream(resolvedFilePath));
+    } catch {
+      reply.status(404).send();
+    }
   }
 
   private _getMimeType(filePath: string): string {

@@ -17,6 +17,13 @@ type RateLimitEntry = {
 
 const RATE_LIMIT_STORE = new Map<string, RateLimitEntry>();
 
+// Proactive periodic cleanup: remove expired entries every 60 s to prevent unbounded growth.
+// The reactive cleanup (size > 5000) is kept as a secondary safety net.
+setInterval(() => {
+  const now = Date.now();
+  CleanupExpiredEntries(now);
+}, 60_000).unref();
+
 function IsMediaFileRequest(req: FastifyRequest): boolean {
   if (req.method !== 'GET') {
     return false;

@@ -24,15 +24,6 @@ function ToLocalIsoDate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function GetCurrentMonday(d: Date): Date {
-  const day = d.getDay()                      // 0=Sun … 6=Sat
-  const shift = day === 0 ? -6 : 1 - day
-  const monday = new Date(d)
-  monday.setDate(d.getDate() + shift)
-  monday.setHours(0, 0, 0, 0)
-  return monday
-}
-
 function GetNextMonday(d: Date): Date {
   const monday = new Date(d)
   monday.setHours(0, 0, 0, 0)

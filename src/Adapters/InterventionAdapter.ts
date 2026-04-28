@@ -477,6 +477,66 @@ export class InterventionAdapter implements IInterventionAdapter {
       }
     }
 
+    // Carry over items from the previous session that are "ready" (all 4 flags set)
+    // but were not selected — they should appear in the new planning session so the
+    // approval manager can still plan them without losing the flag state.
+    if (PreviousSession[0]?.id) {
+      const ReadyNotSelected = await Sequelize.query<{
+        intervention_id: number;
+        ps9: number;
+        po: number;
+        work_permit: number;
+        non_intercettabile: number;
+      }>(
+        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+         FROM priority_tracking_items
+         WHERE session_id = :sessionId
+           AND ps9 = 1
+           AND po = 1
+           AND work_permit = 1
+           AND non_intercettabile = 1
+           AND selection = 0
+           AND executed = 0
+           AND intervention_id NOT IN (
+             SELECT intervention_id FROM priority_tracking_items WHERE session_id = :newSessionId
+           )`,
+        {
+          replacements: { sessionId: PreviousSession[0].id, newSessionId: CreatedSessionId },
+          type: QueryTypes.SELECT,
+        },
+      )
+
+      const CountRow = await Sequelize.query<{ c: number }>(
+          `SELECT COUNT(*) AS c FROM priority_tracking_items WHERE session_id = :newSessionId`,
+          { replacements: { newSessionId: CreatedSessionId }, type: QueryTypes.SELECT },
+        )
+      // CountRow.c già include i top-15 e i selected carry-over inseriti sopra;
+      // non sommare Ranked.length altrimenti si duplicherebbe il conteggio.
+      const BaseRank = Number(CountRow[0]?.c ?? 0)
+
+      for (let Idx = 0; Idx < ReadyNotSelected.length; Idx += 1) {
+        const Extra = ReadyNotSelected[Idx]
+        await Sequelize.query(
+          `INSERT INTO priority_tracking_items
+            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
+           VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile)
+           ON DUPLICATE KEY UPDATE rank_order = rank_order`,
+          {
+            replacements: {
+              sessionId: CreatedSessionId,
+              interventionId: Extra.intervention_id,
+              rankOrder: BaseRank + Idx + 1,
+              ps9: Extra.ps9,
+              po: Extra.po,
+              workPermit: Extra.work_permit,
+              nonIntercettabile: Extra.non_intercettabile,
+            },
+            type: QueryTypes.INSERT,
+          },
+        )
+      }
+    }
+
     return CreatedSessionId
   }
 
@@ -640,15 +700,20 @@ export class InterventionAdapter implements IInterventionAdapter {
       { replacements: { weekStart: WeekStartKey }, type: QueryTypes.SELECT },
     )
     // ── Lazy carry-over ──────────────────────────────────────────────────────
-    // Only run for the current week (In Corso mode).
-    // Do NOT run for future weeks (Planning mode) or past weeks (historical
-    // data must not be mutated retroactively).
+    // Run for current week (In Corso) and immediate next week (Planning).
+    // This keeps selected+unfinished interventions sticky across week rollover,
+    // even when the next session was generated earlier.
     const TodayMondayStr = ToLocalIsoDate((() => {
       const d = new Date(); d.setHours(0,0,0,0)
       const day = d.getDay(); const shift = day === 0 ? -6 : 1 - day
       d.setDate(d.getDate() + shift); return d
     })())
-    if (WeekStartKey === TodayMondayStr && PrevSession[0]) {
+    const NextMondayStr = ToLocalIsoDate((() => {
+      const d = new Date(`${TodayMondayStr}T00:00:00`)
+      d.setDate(d.getDate() + 7)
+      return d
+    })())
+    if ((WeekStartKey === TodayMondayStr || WeekStartKey === NextMondayStr) && PrevSession[0]) {
       const Unfinished = await Sequelize.query<{
         intervention_id: number; ps9: number; po: number;
         work_permit: number; non_intercettabile: number;
@@ -658,19 +723,50 @@ export class InterventionAdapter implements IInterventionAdapter {
          WHERE session_id = :prevId
            AND selection = 1
            AND executed = 0
-           AND rationale IS NULL
-           AND intervention_id NOT IN (
-             SELECT intervention_id FROM priority_tracking_items WHERE session_id = :anchorId
-           )`,
+           AND rationale IS NULL`,
         { replacements: { prevId: PrevSession[0].id, anchorId: AnchorSession.id }, type: QueryTypes.SELECT },
       )
       if (Unfinished.length > 0) {
+        const InterventionIds = Unfinished.map((Item) => Item.intervention_id)
+
+        // If the intervention is already present in the anchor session,
+        // keep it selected so it does not slip to manual-only reselection.
+        await Sequelize.query(
+          `UPDATE priority_tracking_items
+           SET selection = 1,
+               ps9 = 1,
+               po = 1,
+               work_permit = 1,
+               non_intercettabile = 1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE session_id = :anchorId
+             AND intervention_id IN (:interventionIds)
+             AND executed = 0`,
+          {
+            replacements: { anchorId: AnchorSession.id, interventionIds: InterventionIds },
+            type: QueryTypes.UPDATE,
+          },
+        )
+
+        const Missing = await Sequelize.query<{ intervention_id: number; ps9: number; po: number; work_permit: number; non_intercettabile: number }>(
+          `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+           FROM priority_tracking_items
+           WHERE session_id = :prevId
+             AND selection = 1
+             AND executed = 0
+             AND rationale IS NULL
+             AND intervention_id NOT IN (
+               SELECT intervention_id FROM priority_tracking_items WHERE session_id = :anchorId
+             )`,
+          { replacements: { prevId: PrevSession[0].id, anchorId: AnchorSession.id }, type: QueryTypes.SELECT },
+        )
+
         const MaxRankRow = await Sequelize.query<{ max_rank: number | null }>(
           `SELECT MAX(rank_order) AS max_rank FROM priority_tracking_items WHERE session_id = :anchorId`,
           { replacements: { anchorId: AnchorSession.id }, type: QueryTypes.SELECT },
         )
         let NextRank = (MaxRankRow[0]?.max_rank ?? 0) + 1
-        for (const Item of Unfinished) {
+        for (const Item of Missing) {
           await Sequelize.query(
             `INSERT INTO priority_tracking_items
               (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
@@ -915,6 +1011,40 @@ export class InterventionAdapter implements IInterventionAdapter {
     return Rows[0].selection === 1
   }
 
+  async GetPriorityTrackingItemApprovalState(itemId: number, transaction?: unknown): Promise<{
+    PS9: boolean;
+    PO: boolean;
+    WorkPermit: boolean;
+    NonIntercettabile: boolean;
+  } | null> {
+    const Rows = await Sequelize.query<{
+      ps9: number;
+      po: number;
+      work_permit: number;
+      non_intercettabile: number;
+    }>(
+      `SELECT ps9, po, work_permit, non_intercettabile
+       FROM priority_tracking_items
+       WHERE id = :itemId
+       LIMIT 1${transaction ? ' FOR UPDATE' : ''}`,
+      {
+        replacements: { itemId },
+        type: QueryTypes.SELECT,
+        ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
+      },
+    )
+
+    const Row = Rows[0]
+    if (!Row) return null
+
+    return {
+      PS9: Row.ps9 === 1,
+      PO: Row.po === 1,
+      WorkPermit: Row.work_permit === 1,
+      NonIntercettabile: Row.non_intercettabile === 1,
+    }
+  }
+
   async UpdatePriorityTrackingItem(itemId: number, patch: {
     Selection?: boolean;
     PS9?: boolean;
@@ -1107,11 +1237,13 @@ export class InterventionAdapter implements IInterventionAdapter {
     const Next = NextSession[0]
     if (!Next) return
 
-    // Remove from next session if not yet executed (selection flag must not block deletion).
+    // Remove only unplanned carry-over item in next session.
+    // If it was already selected there, keep it.
     await Sequelize.query(
       `DELETE FROM priority_tracking_items
        WHERE session_id = :sessionId
          AND intervention_id = :interventionId
+         AND selection = 0
          AND executed = 0`,
       {
         replacements: { sessionId: Next.id, interventionId: Item.intervention_id },
@@ -1189,6 +1321,32 @@ export class InterventionAdapter implements IInterventionAdapter {
         type: QueryTypes.UPDATE,
       },
     )
+  }
+
+  /**
+   * Quando repair_date viene rimossa, l'intervento torna aperto.
+   * Se era presente nella sessione corrente/passata più recente con selection=1,
+   * va reintrodotto nella pianificazione della settimana successiva.
+   */
+  async AddOpenInterventionToNextSessionIfSelected(interventionId: number): Promise<void> {
+    await this.EnsurePriorityTrackingTables()
+
+    // Trova l'item più recente nella sessione corrente o passata
+    const LatestItem = await Sequelize.query<{ id: number; selection: number; week_start_date: string }>(
+      `SELECT i.id, i.selection, ps.week_start_date
+       FROM priority_tracking_items i
+       INNER JOIN priority_tracking_sessions ps ON ps.id = i.session_id
+       WHERE i.intervention_id = :interventionId
+         AND ps.week_start_date <= CURDATE()
+       ORDER BY ps.week_start_date DESC, ps.id DESC
+       LIMIT 1`,
+      { replacements: { interventionId }, type: QueryTypes.SELECT },
+    )
+    const Item = LatestItem[0]
+    // Se non c'è mai stato nella pianificazione, o non era selezionato, non fare nulla
+    if (!Item || Item.selection !== 1) return
+
+    await this.AddInterventionToNextSession(Item.id)
   }
 
   async FindById(id: number): Promise<InterventionAttributes | null> {

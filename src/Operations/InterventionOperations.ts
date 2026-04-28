@@ -300,7 +300,8 @@ export class InterventionOperations implements IInterventionOperations {
     if (input.post_date !== undefined) updateData.post_date = input.post_date;
     if (input.repair_date !== undefined) {
       updateData.repair_date = input.repair_date ? new Date(input.repair_date) : null;
-      // Keep status coherent with repair date edits done from backoffice.
+      // Status follows repair_date deterministically in backoffice updates:
+      // repair_date set -> closed (0), repair_date removed -> open (1).
       updateData.status = input.repair_date ? 0 : 1;
     }
 
@@ -314,6 +315,11 @@ export class InterventionOperations implements IInterventionOperations {
       await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(id)
     } else {
       await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(id)
+      // Se la repair_date è stata rimossa e l'intervento era selezionato nella sessione
+      // corrente, va reintrodotto nella pianificazione della settimana successiva.
+      if (input.repair_date === null || input.repair_date === '') {
+        await this._interventionAdapter.AddOpenInterventionToNextSessionIfSelected(id)
+      }
     }
 
     this._log.info({ interventionId: id }, 'Intervention updated');
@@ -394,7 +400,7 @@ export class InterventionOperations implements IInterventionOperations {
       if (patch.workPermit !== undefined) AdapterPatch.WorkPermit = patch.workPermit;
       if (patch.nonIntercettabile !== undefined) AdapterPatch.NonIntercettabile = patch.nonIntercettabile;
 
-      // If any prerequisite is withdrawn, selection must be reset as well.
+      // Se uno qualsiasi dei 4 prerequisiti viene rimosso, la selection si azzera.
       if (patch.ps9 === false || patch.po === false || patch.workPermit === false || patch.nonIntercettabile === false) {
         AdapterPatch.Selection = false;
       }
@@ -420,6 +426,21 @@ export class InterventionOperations implements IInterventionOperations {
       const WasSelected = patch.rationale !== undefined
         ? await this._interventionAdapter.GetPriorityTrackingItemSelection(itemId, t)
         : null;
+
+      const WantsSelection = patch.selection === true || patch.rationale === null;
+      if (WantsSelection) {
+        const ApprovalState = await this._interventionAdapter.GetPriorityTrackingItemApprovalState(itemId, t)
+        if (!ApprovalState) throw new NotFoundError('Priority tracking item not found')
+
+        const NextPS9 = patch.ps9 ?? ApprovalState.PS9
+        const NextPO = patch.po ?? ApprovalState.PO
+        const NextWorkPermit = patch.workPermit ?? ApprovalState.WorkPermit
+        const NextNonIntercettabile = patch.nonIntercettabile ?? ApprovalState.NonIntercettabile
+
+        if (!(NextPS9 && NextPO && NextWorkPermit && NextNonIntercettabile)) {
+          throw new BadRequestError('Selection requires ps9, po, workPermit and nonIntercettabile to be true')
+        }
+      }
 
       await this._interventionAdapter.UpdatePriorityTrackingItem(itemId, AdapterPatch, t);
 
@@ -729,6 +750,12 @@ export class InterventionOperations implements IInterventionOperations {
     deviceId: number | null,
     transaction?: unknown,
   ): Promise<void> {
+    // ~14 MB of base64 encodes ≈ 10 MB of binary data.
+    const MAX_PHOTO_BASE64_LENGTH = 14 * 1024 * 1024;
+    if (base64Data.length > MAX_PHOTO_BASE64_LENGTH) {
+      throw new BadRequestError('Photo exceeds the maximum allowed size (10 MB)');
+    }
+
     const file = DecodeBase64Image(base64Data);
     const target = BuildMediaStorageTarget(interventionId, type, file);
     const existing = await this._mediaAdapter.FindActiveByInterventionAndType(interventionId, type);

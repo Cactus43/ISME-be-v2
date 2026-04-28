@@ -45,17 +45,31 @@ export class MediaOperations implements IMediaOperations {
     const media = await this._mediaAdapter.FindById(id);
     if (!media) throw new NotFoundError('Media not found');
 
-    const filePath = path.resolve(Config.DataPath, media.storage_path);
-    if (!filePath.startsWith(path.resolve(Config.DataPath))) {
+    const dataRoot = path.resolve(Config.DataPath);
+    const filePath = path.resolve(dataRoot, media.storage_path);
+    const relativePath = path.relative(dataRoot, filePath);
+
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
       throw new NotFoundError('Invalid file path');
     }
     if (!fs.existsSync(filePath)) throw new NotFoundError('File not found on disk');
 
-    const stats = fs.statSync(filePath);
+    const [resolvedDataRoot, resolvedFilePath] = await Promise.all([
+      fsPromises.realpath(dataRoot),
+      fsPromises.realpath(filePath),
+    ]);
+    const normalizedRoot = resolvedDataRoot.endsWith(path.sep)
+      ? resolvedDataRoot
+      : `${resolvedDataRoot}${path.sep}`;
+    if (!resolvedFilePath.startsWith(normalizedRoot)) {
+      throw new NotFoundError('Invalid file path');
+    }
+
+    const stats = fs.statSync(resolvedFilePath);
     if (!stats.isFile()) throw new NotFoundError('File not found on disk');
 
     return OperationResult.Ok({
-      FilePath: filePath,
+      FilePath: resolvedFilePath,
       MimeType: media.mime_type ?? 'application/octet-stream',
       Filename: media.filename,
       Size: stats.size,
