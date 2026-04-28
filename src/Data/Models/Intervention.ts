@@ -58,6 +58,8 @@ export interface InterventionAttributes {
 
   // Repair
   repair_date: Date | null;
+  manually_added_at: Date | null;
+  approval_note: string | null;
   intervention_description: string | null;
   post_date: string | null;
   reason: string | null;
@@ -83,7 +85,7 @@ type InterventionCreation = Optional<
   | 'need_for_insulation' | 'insulation_material' | 'metal_sheet' | 'metal_sheet_temperature'
   | 'trait_length' | 'asbestos'
   | 'notification' | 'closure_notification'
-  | 'repair_date' | 'intervention_description' | 'post_date' | 'reason'
+  | 'repair_date' | 'manually_added_at' | 'approval_note' | 'intervention_description' | 'post_date' | 'reason'
   | 'created_at' | 'created_by' | 'updated_at' | 'updated_by' | 'row_version' | 'deleted_at' | 'deleted_by'
 >;
 
@@ -127,6 +129,8 @@ export class Intervention extends Model<InterventionAttributes, InterventionCrea
   declare notification: number | null;
   declare closure_notification: string | null;
   declare repair_date: Date | null;
+  declare manually_added_at: Date | null;
+  declare approval_note: string | null;
   declare intervention_description: string | null;
   declare post_date: string | null;
   declare reason: string | null;
@@ -183,6 +187,8 @@ export class Intervention extends Model<InterventionAttributes, InterventionCrea
         notification:                    { type: DataTypes.INTEGER, allowNull: true },
         closure_notification:            { type: DataTypes.STRING(1024), allowNull: true },
         repair_date:                     { type: DataTypes.DATE, allowNull: true },
+        manually_added_at:               { type: DataTypes.DATE, allowNull: true },
+        approval_note:                   { type: DataTypes.STRING(2000), allowNull: true },
         intervention_description:        { type: DataTypes.STRING(2048), allowNull: true },
         post_date:                       { type: DataTypes.STRING(2048), allowNull: true },
         reason:                          { type: DataTypes.STRING(255), allowNull: true },

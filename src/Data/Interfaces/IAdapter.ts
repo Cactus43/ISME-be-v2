@@ -105,6 +105,7 @@ export interface PriorityTrackingItem {
   Id: number;
   SessionId: number;
   InterventionId: number;
+  ManuallyAddedAt: Date | null;
   RankOrder: number;
   Selection: boolean;
   PS9: boolean;
@@ -145,6 +146,7 @@ export interface PriorityTrackingTimelineWeek {
 export interface PriorityTrackingTimelineCell {
   ItemId: number;
   SessionId: number;
+  ManuallyAddedAt: Date | null;
   Selection: boolean;
   PS9: boolean;
   PO: boolean;
@@ -217,6 +219,7 @@ export interface IInterventionAdapter {
     Rationale?: PriorityTrackingRationale | null;
   }, transaction?: unknown): Promise<void>;
   AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void>;
+  AddInterventionToPlanningSession(interventionId: number): Promise<boolean>;
   RemoveInterventionFromNextSession(itemId: number, transaction?: unknown): Promise<void>;
   AddOpenInterventionToNextSessionIfSelected(interventionId: number): Promise<void>;
 }

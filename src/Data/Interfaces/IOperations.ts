@@ -18,7 +18,7 @@ import type { OperatorDTO } from '../Types/DTOs/OperatorDTO';
 import type { MediaDTO } from '../Types/DTOs/MediaDTO';
 import type { MediaSlot, UploadedMediaFile } from '../Types/Media';
 import type { LoginInput, MobileLoginInput } from '../Schemas/Auth';
-import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput } from '../Schemas/Intervention';
+import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput, PriorityTrackingAddInput, ApprovalNoteUpdateInput } from '../Schemas/Intervention';
 import type { CreateTeamInput, UpdateTeamInput } from '../Schemas/Team';
 import type { CreateUnitInput, UpdateUnitInput } from '../Schemas/Unit';
 import type { CreateOperatorInput, UpdateOperatorInput } from '../Schemas/Operator';
@@ -82,9 +82,11 @@ export interface IInterventionOperations {
   GetAllForMobile(teamCode: string, options: MobileSyncPullRequest): Promise<OperationResult<MobileSyncPullDTO>>;
   Create(input: CreateInterventionInput, context: RequestContext): Promise<OperationResult<InterventionDTO>>;
   Update(id: number, input: UpdateInterventionInput, context: RequestContext): Promise<OperationResult<InterventionDTO>>;
+  UpdateApprovalNote(id: number, input: ApprovalNoteUpdateInput, context: RequestContext): Promise<OperationResult<InterventionDTO>>;
   ToggleDelete(input: ToggleDeleteInput, context: RequestContext): Promise<OperationResult<{ Affected: number }>>;
   GetPriorityTrackingWeek(weekStart: Date, weekEnd: Date): Promise<OperationResult<PriorityTrackingWeekResult>>;
   GetPriorityTrackingTimeline(weekStart: Date, weekEnd: Date): Promise<OperationResult<PriorityTrackingTimelineResult>>;
+  AddPriorityTrackingIntervention(input: PriorityTrackingAddInput, context: RequestContext): Promise<OperationResult<{ Added: boolean }>>;
   UpdatePriorityTrackingItem(itemId: number, patch: {
     selection?: boolean;
     ps9?: boolean;

@@ -167,6 +167,16 @@ export const PRIORITY_TRACKING_UPDATE_SCHEMA = z.object({
   ]).nullable().optional(),
 });
 
+export const PRIORITY_TRACKING_ADD_SCHEMA = z.object({
+  interventionId: z.number().int().positive(),
+})
+
+export const APPROVAL_NOTE_UPDATE_SCHEMA = z.object({
+  note: z.string().max(2000).nullable(),
+})
+
 export type PriorityTrackingQuery = z.infer<typeof PRIORITY_TRACKING_QUERY_SCHEMA>;
 export type PriorityTrackingUpdateInput = z.infer<typeof PRIORITY_TRACKING_UPDATE_SCHEMA>;
+export type PriorityTrackingAddInput = z.infer<typeof PRIORITY_TRACKING_ADD_SCHEMA>;
+export type ApprovalNoteUpdateInput = z.infer<typeof APPROVAL_NOTE_UPDATE_SCHEMA>;
 export type MobileSyncPullQuery = z.infer<typeof MOBILE_SYNC_PULL_QUERY_SCHEMA>;

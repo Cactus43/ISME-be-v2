@@ -60,6 +60,8 @@ export interface InterventionDTO {
 
   // Repair
   RepairDate: Date | null;
+  ManuallyAddedAt: Date | null;
+  ApprovalNote: string | null;
   InterventionDescription: string | null;
   PostDate: string | null;
   Reason: string | null;
@@ -135,6 +137,8 @@ export const InterventionDTO = {
       Notification: m.notification,
       ClosureNotification: m.closure_notification,
       RepairDate: m.repair_date,
+      ManuallyAddedAt: m.manually_added_at,
+      ApprovalNote: m.approval_note,
       InterventionDescription: m.intervention_description,
       PostDate: m.post_date,
       Reason: m.reason,

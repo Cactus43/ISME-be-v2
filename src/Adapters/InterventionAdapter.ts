@@ -27,6 +27,15 @@ function ToLocalIsoDate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+function GetNextMonday(d: Date): Date {
+  const monday = new Date(d)
+  monday.setHours(0, 0, 0, 0)
+  const day = monday.getDay()
+  const daysUntil = day === 1 ? 7 : (1 - day + 7) % 7
+  monday.setDate(monday.getDate() + daysUntil)
+  return monday
+}
+
 const OperatorInclude = { model: User, as: 'Operator', attributes: ['id', 'firstname', 'lastname', 'username'] };
 const MediaInclude    = { model: Media, as: 'Media', where: { deleted_at: null } as any, required: false };
 const DEFAULT_STEAM_PRICE_EUR_PER_TONNE = 50;
@@ -187,6 +196,38 @@ export class InterventionAdapter implements IInterventionAdapter {
         ADD COLUMN row_version BIGINT UNSIGNED NOT NULL DEFAULT 0
       `)
     }
+
+    const ManuallyAddedAtColumn = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'interventions'
+         AND COLUMN_NAME = 'manually_added_at'`,
+      { type: QueryTypes.SELECT },
+    )
+
+    if (Number(ManuallyAddedAtColumn[0]?.c ?? 0) === 0) {
+      await Sequelize.query(`
+        ALTER TABLE interventions
+        ADD COLUMN manually_added_at DATETIME NULL
+      `)
+    }
+
+    const ApprovalNoteColumn = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'interventions'
+         AND COLUMN_NAME = 'approval_note'`,
+      { type: QueryTypes.SELECT },
+    )
+
+    if (Number(ApprovalNoteColumn[0]?.c ?? 0) === 0) {
+      await Sequelize.query(`
+        ALTER TABLE interventions
+        ADD COLUMN approval_note VARCHAR(2000) NULL
+      `)
+    }
   }
 
   private async EnsurePriorityTrackingTables(): Promise<void> {
@@ -214,6 +255,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         work_permit TINYINT(1) NOT NULL DEFAULT 0,
         executed TINYINT(1) NOT NULL DEFAULT 0,
         executed_at DATETIME NULL,
+        manually_added_at DATETIME NULL,
         rationale ENUM('Mancanza Operatore', 'Difficolta Intercetto', 'Mancanza materiali', 'Permesso non aperto') NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -274,6 +316,22 @@ export class InterventionAdapter implements IInterventionAdapter {
       await Sequelize.query(`
         ALTER TABLE priority_tracking_items
         ADD COLUMN non_intercettabile TINYINT(1) NOT NULL DEFAULT 0
+      `)
+    }
+
+    const ManuallyAddedAtColumn = await Sequelize.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'priority_tracking_items'
+         AND COLUMN_NAME = 'manually_added_at'`,
+      { type: QueryTypes.SELECT },
+    )
+
+    if (Number(ManuallyAddedAtColumn[0]?.c ?? 0) === 0) {
+      await Sequelize.query(`
+        ALTER TABLE priority_tracking_items
+        ADD COLUMN manually_added_at DATETIME NULL
       `)
     }
   }
@@ -537,6 +595,64 @@ export class InterventionAdapter implements IInterventionAdapter {
       }
     }
 
+    // Carry over manually-added items that are still unselected and not executed.
+    // This avoids requiring manual re-insert every week for planner-added records.
+    if (PreviousSession[0]?.id) {
+      const ManuallyAddedNotSelected = await Sequelize.query<{
+        intervention_id: number;
+        ps9: number;
+        po: number;
+        work_permit: number;
+        non_intercettabile: number;
+        manually_added_at: Date;
+      }>(
+        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile, manually_added_at
+         FROM priority_tracking_items
+         WHERE session_id = :sessionId
+           AND manually_added_at IS NOT NULL
+           AND selection = 0
+           AND executed = 0
+           AND intervention_id NOT IN (
+             SELECT intervention_id FROM priority_tracking_items WHERE session_id = :newSessionId
+           )`,
+        {
+          replacements: { sessionId: PreviousSession[0].id, newSessionId: CreatedSessionId },
+          type: QueryTypes.SELECT,
+        },
+      )
+
+      if (ManuallyAddedNotSelected.length > 0) {
+        const CountRow = await Sequelize.query<{ c: number }>(
+          `SELECT COUNT(*) AS c FROM priority_tracking_items WHERE session_id = :newSessionId`,
+          { replacements: { newSessionId: CreatedSessionId }, type: QueryTypes.SELECT },
+        )
+        const BaseRank = Number(CountRow[0]?.c ?? 0)
+
+        for (let Idx = 0; Idx < ManuallyAddedNotSelected.length; Idx += 1) {
+          const Extra = ManuallyAddedNotSelected[Idx]
+          await Sequelize.query(
+            `INSERT INTO priority_tracking_items
+              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, manually_added_at)
+             VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile, :manuallyAddedAt)
+             ON DUPLICATE KEY UPDATE rank_order = rank_order`,
+            {
+              replacements: {
+                sessionId: CreatedSessionId,
+                interventionId: Extra.intervention_id,
+                rankOrder: BaseRank + Idx + 1,
+                ps9: Extra.ps9,
+                po: Extra.po,
+                workPermit: Extra.work_permit,
+                nonIntercettabile: Extra.non_intercettabile,
+                manuallyAddedAt: Extra.manually_added_at,
+              },
+              type: QueryTypes.INSERT,
+            },
+          )
+        }
+      }
+    }
+
     return CreatedSessionId
   }
 
@@ -561,6 +677,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       id: number;
       session_id: number;
       intervention_id: number;
+      manually_added_at: Date | null;
       rank_order: number;
       selection: number;
       ps9: number;
@@ -589,6 +706,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          i.id,
          i.session_id,
          i.intervention_id,
+         i.manually_added_at,
          i.rank_order,
          i.selection,
          i.ps9,
@@ -651,6 +769,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         Id: Row.id,
         SessionId: Row.session_id,
         InterventionId: Row.intervention_id,
+        ManuallyAddedAt: Row.manually_added_at,
         RankOrder: Row.rank_order,
         Selection: Row.selection === 1,
         PS9: Row.ps9 === 1,
@@ -873,6 +992,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       item_id: number;
       session_id: number;
       intervention_id: number;
+      manually_added_at: Date | null;
       selection: number;
       ps9: number;
       po: number;
@@ -885,6 +1005,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          i.id AS item_id,
          i.session_id,
          i.intervention_id,
+         i.manually_added_at,
          i.selection,
          i.ps9,
          i.po,
@@ -940,6 +1061,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         const Weeks: Record<string, {
           ItemId: number;
           SessionId: number;
+          ManuallyAddedAt: Date | null;
           Selection: boolean;
           PS9: boolean;
           PO: boolean;
@@ -953,6 +1075,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           Weeks[String(Item.session_id)] = {
             ItemId: Item.item_id,
             SessionId: Item.session_id,
+            ManuallyAddedAt: Item.manually_added_at,
             Selection: Item.selection === 1,
             PS9: Item.ps9 === 1,
             PO: Item.po === 1,
@@ -1202,6 +1325,68 @@ export class InterventionAdapter implements IInterventionAdapter {
         ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
     )
+  }
+
+  async AddInterventionToPlanningSession(interventionId: number): Promise<boolean> {
+    await this.EnsurePriorityTrackingTables()
+
+    const Intervention = await Sequelize.query<{ id: number }>(
+      `SELECT id
+       FROM interventions
+       WHERE id = :interventionId
+         AND deleted_at IS NULL
+         AND status = 1
+         AND repair_date IS NULL
+       LIMIT 1`,
+      { replacements: { interventionId }, type: QueryTypes.SELECT },
+    )
+
+    if (!Intervention[0]) return false
+
+    const NextStart = GetNextMonday(new Date())
+    const NextEnd = new Date(NextStart)
+    NextEnd.setDate(NextStart.getDate() + 6)
+    const sessionId = await this.EnsurePriorityTrackingWeek(NextStart, NextEnd)
+
+    const Existing = await Sequelize.query<{ id: number }>(
+      `SELECT id
+       FROM priority_tracking_items
+       WHERE session_id = :sessionId
+         AND intervention_id = :interventionId
+       LIMIT 1`,
+      { replacements: { sessionId, interventionId }, type: QueryTypes.SELECT },
+    )
+
+    if (Existing[0]) return false
+
+    const MaxRank = await Sequelize.query<{ max_rank: number | null }>(
+      `SELECT MAX(rank_order) AS max_rank FROM priority_tracking_items WHERE session_id = :sessionId`,
+      { replacements: { sessionId }, type: QueryTypes.SELECT },
+    )
+    const NextRank = (MaxRank[0]?.max_rank ?? 0) + 1
+
+    await Sequelize.query(
+      `INSERT INTO priority_tracking_items
+        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed, manually_added_at)
+       VALUES (:sessionId, :interventionId, :rankOrder, 0, 0, 0, 0, 0, NULL, 0, CURRENT_TIMESTAMP)`,
+      {
+        replacements: { sessionId, interventionId, rankOrder: NextRank },
+        type: QueryTypes.INSERT,
+      },
+    )
+
+    await Sequelize.query(
+      `UPDATE interventions
+       SET manually_added_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = :interventionId`,
+      {
+        replacements: { interventionId },
+        type: QueryTypes.UPDATE,
+      },
+    )
+
+    return true
   }
 
   async RemoveInterventionFromNextSession(itemId: number, transaction?: unknown): Promise<void> {

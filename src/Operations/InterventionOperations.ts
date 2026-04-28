@@ -8,7 +8,7 @@ import type { InterventionAttributes } from '../Data/Models/Intervention';
 import type { PaginatedResult } from '../Data/Types/Pagination';
 import type { RequestContext } from '../Data/Types/Contexts';
 import type { InterventionPolicy } from '../Data/Types/Policies';
-import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput } from '../Data/Schemas/Intervention';
+import type { CreateInterventionInput, UpdateInterventionInput, ListInterventionsQuery, ToggleDeleteInput, PriorityTrackingAddInput, ApprovalNoteUpdateInput } from '../Data/Schemas/Intervention';
 import { InterventionDTO } from '../Data/Types/DTOs/InterventionDTO';
 import { OperationResult } from '../Data/Types/OperationResult';
 import { ComputeChartBundle, type ChartBundle } from '../Utils/ChartEngine';
@@ -327,6 +327,20 @@ export class InterventionOperations implements IInterventionOperations {
     return OperationResult.Ok(InterventionDTO.FromModel(row));
   }
 
+  async UpdateApprovalNote(id: number, input: ApprovalNoteUpdateInput, context: RequestContext): Promise<OperationResult<InterventionDTO>> {
+    if (context.UserRole !== 'admin' && context.UserRole !== 'approval_manager') {
+      throw new BadRequestError('Insufficient permissions for approval note')
+    }
+
+    const row = await this._interventionAdapter.Update(id, {
+      approval_note: input.note ?? null,
+      updated_by: context.UserId,
+    })
+
+    if (!row) throw new NotFoundError('Intervention not found')
+    return OperationResult.Ok(InterventionDTO.FromModel(row))
+  }
+
 
   // ─── Toggle delete ────────────────────────────────────────────────
 
@@ -363,6 +377,11 @@ export class InterventionOperations implements IInterventionOperations {
     }
     const data = await this._interventionAdapter.GetPriorityTrackingTimeline(weekStart);
     return OperationResult.Ok(data);
+  }
+
+  async AddPriorityTrackingIntervention(input: PriorityTrackingAddInput, _context: RequestContext): Promise<OperationResult<{ Added: boolean }>> {
+    const Added = await this._interventionAdapter.AddInterventionToPlanningSession(input.interventionId)
+    return OperationResult.Ok({ Added })
   }
 
   async UpdatePriorityTrackingItem(

@@ -10,8 +10,12 @@ import {
   MOBILE_SYNC_PULL_QUERY_SCHEMA,
   PRIORITY_TRACKING_QUERY_SCHEMA,
   PRIORITY_TRACKING_UPDATE_SCHEMA,
+  PRIORITY_TRACKING_ADD_SCHEMA,
+  APPROVAL_NOTE_UPDATE_SCHEMA,
   TOGGLE_DELETE_SCHEMA,
+  type ApprovalNoteUpdateInput,
   type CreateInterventionInput,
+  type PriorityTrackingAddInput,
   type PriorityTrackingQuery,
   type PriorityTrackingUpdateInput,
   type MobileSyncPullQuery,
@@ -77,6 +81,9 @@ export class InterventionController {
     app.put('/priority-tracking/items/:id', {
       preHandler: [Authenticate('backoffice'), RequireRole('admin', 'approval_manager', 'execution_manager'), Validate(PRIORITY_TRACKING_UPDATE_SCHEMA)],
     }, this.Handle(this.UpdatePriorityTrackingItem));
+    app.post('/priority-tracking/add', {
+      preHandler: [Authenticate('backoffice'), RequireRole('admin', 'approval_manager'), Validate(PRIORITY_TRACKING_ADD_SCHEMA)],
+    }, this.Handle(this.AddPriorityTrackingIntervention));
 
     app.get('/', { preHandler: [Authenticate('backoffice'), ValidateQuery(LIST_INTERVENTIONS_QUERY_SCHEMA)] }, this.Handle(this.List));
     app.get('/export/csv', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.ExportCsv));
@@ -84,6 +91,7 @@ export class InterventionController {
     app.get('/:id', { preHandler: [Authenticate('backoffice')] }, this.Handle(this.GetById));
     app.post('/', { preHandler: [Authenticate(), RequireRole('admin', 'execution_manager'), Validate(CREATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Create));
     app.put('/:id', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(UPDATE_INTERVENTION_SCHEMA)] }, this.Handle(this.Update));
+    app.put('/:id/approval-note', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'approval_manager'), Validate(APPROVAL_NOTE_UPDATE_SCHEMA)] }, this.Handle(this.UpdateApprovalNote));
     app.post('/toggle-delete', { preHandler: [Authenticate('backoffice'), RequireRole('admin', 'execution_manager'), Validate(TOGGLE_DELETE_SCHEMA)] }, this.Handle(this.ToggleDelete));
 
     app.get('/mobile/sync', { preHandler: [Authenticate('mobile'), ValidateQuery(MOBILE_SYNC_PULL_QUERY_SCHEMA)] }, this.Handle(this.MobileSync));
@@ -173,6 +181,12 @@ export class InterventionController {
     reply.send({ status: 'ok', data: { Updated: true } });
   }
 
+  private async AddPriorityTrackingIntervention(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
+    const context = RequestContext.FromRequest(req)
+    const result = await this._ops.AddPriorityTrackingIntervention(req.body as PriorityTrackingAddInput, context)
+    reply.send({ status: 'ok', data: result.Data })
+  }
+
   private async GetById(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
     const result = await this._ops.GetById(ParseId((req.params as Record<string, string>).id));
     reply.send({ status: 'ok', data: result.Data });
@@ -222,6 +236,13 @@ export class InterventionController {
     const context = RequestContext.FromRequest(req);
     const result = await this._ops.Update(ParseId((req.params as Record<string, string>).id), req.body as UpdateInterventionInput, context);
     reply.send({ status: 'ok', data: result.Data });
+  }
+
+  private async UpdateApprovalNote(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
+    const context = RequestContext.FromRequest(req)
+    const id = ParseId((req.params as Record<string, string>).id)
+    const result = await this._ops.UpdateApprovalNote(id, req.body as ApprovalNoteUpdateInput, context)
+    reply.send({ status: 'ok', data: result.Data })
   }
 
   private async ToggleDelete(req: IAuthenticatedRequest, reply: FastifyReply): Promise<void> {
