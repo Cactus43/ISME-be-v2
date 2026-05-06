@@ -399,6 +399,18 @@ export class InterventionAdapter implements IInterventionAdapter {
            ORDER BY ps.week_start_date DESC, ps.id DESC, pti.id DESC
            LIMIT 1
          ), 0) = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM priority_tracking_items pti_f
+           WHERE pti_f.intervention_id = iv.id
+             AND pti_f.session_id = (
+               SELECT id FROM priority_tracking_sessions
+               WHERE week_start_date < :weekStart
+               ORDER BY week_start_date DESC LIMIT 1
+             )
+             AND (pti_f.ps9 = 1 OR pti_f.po = 1 OR pti_f.work_permit = 1 OR pti_f.non_intercettabile = 1)
+             AND pti_f.selection = 0
+             AND pti_f.executed = 0
+         )
        ORDER BY iv.inspection_date ASC
        LIMIT ${Config.PriorityTrackingLimit}`,
       { replacements: { weekStart: WeekStartKey }, type: QueryTypes.SELECT },
@@ -489,8 +501,12 @@ export class InterventionAdapter implements IInterventionAdapter {
       )
     }
 
-    // Carry over previously-selected, non-executed items from the previous session
-    if (PreviousSession[0]?.id) {
+    // Carry over previously-selected, non-executed items from the previous session,
+    // but ONLY when generating the current or a past week's session.
+    // For future planning sessions, selected items must NOT appear — they will be
+    // carried over naturally when that future week becomes the current week.
+    const NewSessionIsCurrent = WeekStartKey <= ToLocalIsoDate(new Date())
+    if (NewSessionIsCurrent && PreviousSession[0]?.id) {
       const SelectedNotExecuted = await Sequelize.query<{
         intervention_id: number;
         ps9: number;
@@ -517,13 +533,14 @@ export class InterventionAdapter implements IInterventionAdapter {
         await Sequelize.query(
           `INSERT INTO priority_tracking_items
             (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
-           VALUES (:sessionId, :interventionId, :rankOrder, 1, :ps9, :po, :workPermit, :nonIntercettabile)
+           VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :nonIntercettabile)
            ON DUPLICATE KEY UPDATE rank_order = VALUES(rank_order)`,
           {
             replacements: {
               sessionId: CreatedSessionId,
               interventionId: Extra.intervention_id,
               rankOrder: Ranked.length + Idx + 1,
+              selection: 1,
               ps9: Extra.ps9,
               po: Extra.po,
               workPermit: Extra.work_permit,
@@ -549,15 +566,14 @@ export class InterventionAdapter implements IInterventionAdapter {
         `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
          FROM priority_tracking_items
          WHERE session_id = :sessionId
-           AND ps9 = 1
-           AND po = 1
-           AND work_permit = 1
-           AND non_intercettabile = 1
+           AND (ps9 = 1 OR po = 1 OR work_permit = 1 OR non_intercettabile = 1)
            AND selection = 0
            AND executed = 0
            AND intervention_id NOT IN (
              SELECT intervention_id FROM priority_tracking_items WHERE session_id = :newSessionId
            )`,
+        // Flag carry-over uses OR: any partial approval progress is enough to
+        // keep the item visible in the next planning session.
         {
           replacements: { sessionId: PreviousSession[0].id, newSessionId: CreatedSessionId },
           type: QueryTypes.SELECT,
@@ -827,12 +843,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       const day = d.getDay(); const shift = day === 0 ? -6 : 1 - day
       d.setDate(d.getDate() + shift); return d
     })())
-    const NextMondayStr = ToLocalIsoDate((() => {
-      const d = new Date(`${TodayMondayStr}T00:00:00`)
-      d.setDate(d.getDate() + 7)
-      return d
-    })())
-    if ((WeekStartKey === TodayMondayStr || WeekStartKey === NextMondayStr) && PrevSession[0]) {
+    if (WeekStartKey === TodayMondayStr && PrevSession[0]) {
       const Unfinished = await Sequelize.query<{
         intervention_id: number; ps9: number; po: number;
         work_permit: number; non_intercettabile: number;
@@ -1219,9 +1230,9 @@ export class InterventionAdapter implements IInterventionAdapter {
   }
 
   async AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void> {
-    // Fetch item's intervention_id and its session's week_start_date
-    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string }>(
-      `SELECT pti.intervention_id, ps.week_start_date
+    // Fetch item's intervention_id, session's week_start_date, and approval flags
+    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string; ps9: number; po: number; work_permit: number; non_intercettabile: number }>(
+      `SELECT pti.intervention_id, ps.week_start_date, pti.ps9, pti.po, pti.work_permit, pti.non_intercettabile
        FROM priority_tracking_items pti
        INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
        WHERE pti.id = :itemId
@@ -1234,6 +1245,12 @@ export class InterventionAdapter implements IInterventionAdapter {
     )
     const Item = ItemRow[0]
     if (!Item) return
+
+    // Only propagate to the next session when the rationale is set on the CURRENT week's
+    // session. If the item belongs to a future planning session, do nothing — the carry-over
+    // will happen naturally when that future week becomes the current week.
+    const TodayStr = ToLocalIsoDate(new Date())
+    if (Item.week_start_date > TodayStr) return
 
     // Find the session immediately after this one, or create it if missing
     let NextSessionRow = await Sequelize.query<{ id: number; week_start_date: string; week_end_date: string }>(
@@ -1318,9 +1335,9 @@ export class InterventionAdapter implements IInterventionAdapter {
     await Sequelize.query(
       `INSERT INTO priority_tracking_items
         (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
-       VALUES (:sessionId, :interventionId, :rankOrder, 0, 0, 0, 0, 0, NULL, 0)`,
+       VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile, NULL, 0)`,
       {
-        replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank },
+        replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank, ps9: Item.ps9, po: Item.po, workPermit: Item.work_permit, nonIntercettabile: Item.non_intercettabile },
         type: QueryTypes.INSERT,
         ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
