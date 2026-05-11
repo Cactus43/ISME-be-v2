@@ -8,25 +8,25 @@ import { Authenticate } from '../Middleware/Authenticate';
 
 // ─── Images Controller (v1-compatible photo serving) ───────────────────────
 // Serves photos from disk by filename convention: {tag}.jpg
-// Files stored under Config.DataPath/fotoPerdita/ and Config.DataPath/fotoRiparazione/
+// Files stored under Config.DataPath/photo_before/ and Config.DataPath/photo_after/
 
 export class ImagesController {
 
   public RegisterRoutes(app: FastifyInstance): void {
-    app.get('/fotoPerdita/:name', { preHandler: [Authenticate()] }, async (request, reply) => {
-      await this._serveFotoPerdita(request, reply);
+    app.get('/photo_before/:name', { preHandler: [Authenticate()] }, async (request, reply) => {
+      await this._servePhotoBefore(request, reply);
     });
-    app.get('/fotoRiparazione/:name', { preHandler: [Authenticate()] }, async (request, reply) => {
-      await this._serveFotoRiparazione(request, reply);
+    app.get('/photo_after/:name', { preHandler: [Authenticate()] }, async (request, reply) => {
+      await this._servePhotoAfter(request, reply);
     });
   }
 
-  private async _serveFotoPerdita(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    await this._servePhoto(req, reply, 'fotoPerdita');
+  private async _servePhotoBefore(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+    await this._servePhoto(req, reply, 'photo_before');
   }
 
-  private async _serveFotoRiparazione(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    await this._servePhoto(req, reply, 'fotoRiparazione');
+  private async _servePhotoAfter(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+    await this._servePhoto(req, reply, 'photo_after');
   }
 
   private async _servePhoto(req: FastifyRequest, reply: FastifyReply, folder: string): Promise<void> {

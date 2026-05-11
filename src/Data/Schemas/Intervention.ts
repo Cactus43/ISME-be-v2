@@ -46,8 +46,8 @@ export const CREATE_INTERVENTION_SCHEMA = z.object({
   reason: z.string().optional().nullable(),
 
   // Photos sent as base64 from mobile (max ~10MB encoded)
-  fotoPerdita: z.string().max(14_000_000).optional().nullable(),
-  fotoRiparazione: z.string().max(14_000_000).optional().nullable(),
+  photo_before: z.string().max(14_000_000).optional().nullable(),
+  photo_after: z.string().max(14_000_000).optional().nullable(),
 });
 
 export type CreateInterventionInput = z.infer<typeof CREATE_INTERVENTION_SCHEMA>;
@@ -158,7 +158,7 @@ export const PRIORITY_TRACKING_UPDATE_SCHEMA = z.object({
   ps9: z.boolean().optional(),
   po: z.boolean().optional(),
   workPermit: z.boolean().optional(),
-  nonIntercettabile: z.boolean().optional(),
+  notInterceptable: z.boolean().optional(),
   rationale: z.enum([
     'Mancanza Operatore',
     'Difficolta Intercetto',

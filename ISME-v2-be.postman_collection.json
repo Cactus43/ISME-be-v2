@@ -1107,9 +1107,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/Images/fotoPerdita/example.jpg",
+              "raw": "{{baseUrl}}/api/Images/photo_before/example.jpg",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "Images", "fotoPerdita", "example.jpg"]
+              "path": ["api", "Images", "photo_before", "example.jpg"]
             }
           },
           "response": []
@@ -1120,9 +1120,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/Images/fotoRiparazione/example.jpg",
+              "raw": "{{baseUrl}}/api/Images/photo_after/example.jpg",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "Images", "fotoRiparazione", "example.jpg"]
+              "path": ["api", "Images", "photo_after", "example.jpg"]
             }
           },
           "response": []

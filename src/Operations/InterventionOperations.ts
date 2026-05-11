@@ -210,10 +210,10 @@ export class InterventionOperations implements IInterventionOperations {
       }
 
       // Extract and remove base64 photos from the insert payload
-      const fotoPerdita = normalized.fotoPerdita as string | undefined;
-      const fotoRiparazione = normalized.fotoRiparazione as string | undefined;
-      delete normalized.fotoPerdita;
-      delete normalized.fotoRiparazione;
+      const photoBefore = normalized.photo_before as string | undefined;
+      const photoAfter = normalized.photo_after as string | undefined;
+      delete normalized.photo_before;
+      delete normalized.photo_after;
 
       const intervention = await this._interventionAdapter.Create(
         {
@@ -228,11 +228,11 @@ export class InterventionOperations implements IInterventionOperations {
       );
 
       // Persist attached photos as media
-      if (fotoPerdita) {
-        await this._savePhoto(intervention.id, fotoPerdita, 'photo_before', context.UserId, context.DeviceId, t);
+      if (photoBefore) {
+        await this._savePhoto(intervention.id, photoBefore, 'photo_before', context.UserId, context.DeviceId, t);
       }
-      if (fotoRiparazione) {
-        await this._savePhoto(intervention.id, fotoRiparazione, 'photo_after', context.UserId, context.DeviceId, t);
+      if (photoAfter) {
+        await this._savePhoto(intervention.id, photoAfter, 'photo_after', context.UserId, context.DeviceId, t);
       }
 
       await t.commit();
@@ -391,7 +391,7 @@ export class InterventionOperations implements IInterventionOperations {
       ps9?: boolean;
       po?: boolean;
       workPermit?: boolean;
-      nonIntercettabile?: boolean;
+      notInterceptable?: boolean;
       rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
     },
     context: RequestContext,
@@ -407,20 +407,20 @@ export class InterventionOperations implements IInterventionOperations {
       PS9?: boolean;
       PO?: boolean;
       WorkPermit?: boolean;
-      NonIntercettabile?: boolean;
+      NotInterceptable?: boolean;
       Rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
     } = {};
 
-    if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined || patch.nonIntercettabile !== undefined) {
+    if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined || patch.notInterceptable !== undefined) {
       if (!CanApproval) throw new BadRequestError('Insufficient permissions for approval fields');
       if (patch.selection !== undefined) AdapterPatch.Selection = patch.selection;
       if (patch.ps9 !== undefined) AdapterPatch.PS9 = patch.ps9;
       if (patch.po !== undefined) AdapterPatch.PO = patch.po;
       if (patch.workPermit !== undefined) AdapterPatch.WorkPermit = patch.workPermit;
-      if (patch.nonIntercettabile !== undefined) AdapterPatch.NonIntercettabile = patch.nonIntercettabile;
+      if (patch.notInterceptable !== undefined) AdapterPatch.NotInterceptable = patch.notInterceptable;
 
       // Se uno qualsiasi dei 4 prerequisiti viene rimosso, la selection si azzera.
-      if (patch.ps9 === false || patch.po === false || patch.workPermit === false || patch.nonIntercettabile === false) {
+      if (patch.ps9 === false || patch.po === false || patch.workPermit === false || patch.notInterceptable === false) {
         AdapterPatch.Selection = false;
       }
     }
@@ -454,10 +454,10 @@ export class InterventionOperations implements IInterventionOperations {
         const NextPS9 = patch.ps9 ?? ApprovalState.PS9
         const NextPO = patch.po ?? ApprovalState.PO
         const NextWorkPermit = patch.workPermit ?? ApprovalState.WorkPermit
-        const NextNonIntercettabile = patch.nonIntercettabile ?? ApprovalState.NonIntercettabile
+        const NextNotInterceptable = patch.notInterceptable ?? ApprovalState.NotInterceptable
 
-        if (!(NextPS9 && NextPO && NextWorkPermit && NextNonIntercettabile)) {
-          throw new BadRequestError('Selection requires ps9, po, workPermit and nonIntercettabile to be true')
+        if (!(NextPS9 && NextPO && NextWorkPermit && NextNotInterceptable)) {
+          throw new BadRequestError('Selection requires ps9, po, workPermit and notInterceptable to be true')
         }
       }
 
@@ -634,8 +634,8 @@ export class InterventionOperations implements IInterventionOperations {
             if (item.status !== undefined) updateData.status = item.status;
             if (item.priority !== undefined) updateData.priority = item.priority;
 
-            const fotoPerdita = item.fotoPerdita as string | undefined;
-            const fotoRiparazione = item.fotoRiparazione as string | undefined;
+            const photoBefore = item.photo_before as string | undefined;
+            const photoAfter = item.photo_after as string | undefined;
 
             // Calculate steam flow if pressure + plume provided
             if (updateData.pressure && updateData.plume_length) {
@@ -669,11 +669,11 @@ export class InterventionOperations implements IInterventionOperations {
               await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(serverId)
             }
 
-            if (fotoPerdita) {
-              await this._savePhoto(serverId, fotoPerdita, 'photo_before', context.UserId, context.DeviceId);
+            if (photoBefore) {
+              await this._savePhoto(serverId, photoBefore, 'photo_before', context.UserId, context.DeviceId);
             }
-            if (fotoRiparazione) {
-              await this._savePhoto(serverId, fotoRiparazione, 'photo_after', context.UserId, context.DeviceId);
+            if (photoAfter) {
+              await this._savePhoto(serverId, photoAfter, 'photo_after', context.UserId, context.DeviceId);
             }
             idMap[localId] = serverId;
             continue;
@@ -709,10 +709,10 @@ export class InterventionOperations implements IInterventionOperations {
           }
 
           // Extract photos
-          const fotoPerdita = normalized.fotoPerdita as string | undefined;
-          const fotoRiparazione = normalized.fotoRiparazione as string | undefined;
-          delete normalized.fotoPerdita;
-          delete normalized.fotoRiparazione;
+          const photoBefore = normalized.photo_before as string | undefined;
+          const photoAfter = normalized.photo_after as string | undefined;
+          delete normalized.photo_before;
+          delete normalized.photo_after;
 
           const inspectionDateStr = normalized.inspection_date as string;
           const repairDateStr = normalized.repair_date as string;
@@ -731,11 +731,11 @@ export class InterventionOperations implements IInterventionOperations {
           );
 
           // Save photos
-          if (fotoPerdita) {
-            await this._savePhoto(intervention.id, fotoPerdita, 'photo_before', context.UserId, context.DeviceId, t);
+          if (photoBefore) {
+            await this._savePhoto(intervention.id, photoBefore, 'photo_before', context.UserId, context.DeviceId, t);
           }
-          if (fotoRiparazione) {
-            await this._savePhoto(intervention.id, fotoRiparazione, 'photo_after', context.UserId, context.DeviceId, t);
+          if (photoAfter) {
+            await this._savePhoto(intervention.id, photoAfter, 'photo_after', context.UserId, context.DeviceId, t);
           }
 
           if (Number(intervention.status) !== 1 || intervention.repair_date != null) {

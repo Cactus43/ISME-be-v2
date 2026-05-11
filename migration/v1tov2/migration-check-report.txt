@@ -1,0 +1,23 @@
+
+╔════════════════════════════════════════════════════════════════════╗
+║                    MIGRATION INTEGRITY CHECK                       ║
+╠════════════════════════════════════════════════════════════════════╣
+║ Source DB: SteamLeaks@127.0.0.1                                   ║
+║ Target DB: SteamLeaksV2_migration_test@127.0.0.1                  ║
+║ Timestamp: 2026-05-11T14:06:06.654Z                               ║
+╠════════════════════════════════════════════════════════════════════╣
+║ Entity                              V1 Count  |  V2 Count  |  Status ║
+╠════════════════════════════════════════════════════════════════════╣
+║ Users                                     2   |           4   | ⚠️  200.0%║
+║ Operators (created from v1)               3   |           2   | ❌ 66.7%║
+║ Teams                                     7   |           7   | ✅ 100.0%║
+║ Units                                    21   |          21   | ✅ 100.0%║
+║ Interventions                           901   |         901   | ✅ 100.0%║
+║ Access Tokens                         1,689   |       1,688   | ❌ 99.9%║
+║ Media Records (photos)              N/A       |       1,479   | ⚠️  —    ║
+║ Priority Tracking Items             N/A       |           3   | ⚠️  —    ║
+║ Physical photo_before files             918   |         918   | ✅ 100.0%║
+║ Physical photo_after files              589   |         589   | ✅ 100.0%║
+╚════════════════════════════════════════════════════════════════════╝
+
+⚠️  MIGRATION HAS DISCREPANCIES - Please review the counts above.

@@ -151,7 +151,7 @@ export interface PriorityTrackingTimelineCell {
   PS9: boolean;
   PO: boolean;
   WorkPermit: boolean;
-  NonIntercettabile: boolean;
+  NotInterceptable: boolean;
   Rationale: PriorityTrackingRationale | null;
   Executed: boolean;
 }
@@ -206,7 +206,7 @@ export interface IInterventionAdapter {
     PS9: boolean;
     PO: boolean;
     WorkPermit: boolean;
-    NonIntercettabile: boolean;
+    NotInterceptable: boolean;
   } | null>
   ResetLatestPriorityTrackingItemExecuted(interventionId: number): Promise<void>;
   GetPriorityTrackingItemSelection(itemId: number, transaction?: unknown): Promise<boolean | null>;
@@ -215,7 +215,7 @@ export interface IInterventionAdapter {
     PS9?: boolean;
     PO?: boolean;
     WorkPermit?: boolean;
-    NonIntercettabile?: boolean;
+    NotInterceptable?: boolean;
     Rationale?: PriorityTrackingRationale | null;
   }, transaction?: unknown): Promise<void>;
   AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void>;

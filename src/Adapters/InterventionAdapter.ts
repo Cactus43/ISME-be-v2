@@ -303,20 +303,36 @@ export class InterventionAdapter implements IInterventionAdapter {
       `)
     }
 
-    const NonIntercettabileColumn = await Sequelize.query<{ c: number }>(
+    const NotInterceptableColumn = await Sequelize.query<{ c: number }>(
       `SELECT COUNT(*) AS c
        FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE()
          AND TABLE_NAME = 'priority_tracking_items'
-         AND COLUMN_NAME = 'non_intercettabile'`,
+         AND COLUMN_NAME = 'not_interceptable'`,
       { type: QueryTypes.SELECT },
     )
 
-    if (Number(NonIntercettabileColumn[0]?.c ?? 0) === 0) {
-      await Sequelize.query(`
-        ALTER TABLE priority_tracking_items
-        ADD COLUMN non_intercettabile TINYINT(1) NOT NULL DEFAULT 0
-      `)
+    if (Number(NotInterceptableColumn[0]?.c ?? 0) === 0) {
+      // Check if old column exists to rename it, otherwise create fresh
+      const OldColumn = await Sequelize.query<{ c: number }>(
+        `SELECT COUNT(*) AS c
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'priority_tracking_items'
+           AND COLUMN_NAME = 'not_interceptable'`,
+        { type: QueryTypes.SELECT },
+      )
+      if (Number(OldColumn[0]?.c ?? 0) > 0) {
+        await Sequelize.query(`
+          ALTER TABLE priority_tracking_items
+          CHANGE COLUMN not_interceptable not_interceptable TINYINT(1) NOT NULL DEFAULT 0
+        `)
+      } else {
+        await Sequelize.query(`
+          ALTER TABLE priority_tracking_items
+          ADD COLUMN not_interceptable TINYINT(1) NOT NULL DEFAULT 0
+        `)
+      }
     }
 
     const ManuallyAddedAtColumn = await Sequelize.query<{ c: number }>(
@@ -407,7 +423,7 @@ export class InterventionAdapter implements IInterventionAdapter {
                WHERE week_start_date < :weekStart
                ORDER BY week_start_date DESC LIMIT 1
              )
-             AND (pti_f.ps9 = 1 OR pti_f.po = 1 OR pti_f.work_permit = 1 OR pti_f.non_intercettabile = 1)
+             AND (pti_f.ps9 = 1 OR pti_f.po = 1 OR pti_f.work_permit = 1 OR pti_f.not_interceptable = 1)
              AND pti_f.selection = 0
              AND pti_f.executed = 0
          )
@@ -435,7 +451,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       ps9: number;
       po: number;
       work_permit: number;
-      non_intercettabile: number;
+      not_interceptable: number;
     }>()
 
     if (PreviousSession[0]?.id && Ranked.length > 0) {
@@ -445,9 +461,9 @@ export class InterventionAdapter implements IInterventionAdapter {
         ps9: number;
         po: number;
         work_permit: number;
-        non_intercettabile: number;
+        not_interceptable: number;
       }>(
-        `SELECT intervention_id, selection, ps9, po, work_permit, non_intercettabile
+        `SELECT intervention_id, selection, ps9, po, work_permit, not_interceptable
          FROM priority_tracking_items
          WHERE session_id = :sessionId
            AND intervention_id IN (:interventionIds)`,
@@ -466,7 +482,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           ps9: Item.ps9,
           po: Item.po,
           work_permit: Item.work_permit,
-          non_intercettabile: Item.non_intercettabile,
+          not_interceptable: Item.not_interceptable,
         })
       }
     }
@@ -476,15 +492,15 @@ export class InterventionAdapter implements IInterventionAdapter {
       const PreviousValues = PreviousByIntervention.get(Row.id)
       await Sequelize.query(
         `INSERT INTO priority_tracking_items
-          (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
-         VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :nonIntercettabile)
+          (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable)
+         VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :notInterceptable)
          ON DUPLICATE KEY UPDATE
            rank_order = VALUES(rank_order),
            selection = VALUES(selection),
            ps9 = VALUES(ps9),
            po = VALUES(po),
            work_permit = VALUES(work_permit),
-           non_intercettabile = VALUES(non_intercettabile)`,
+           not_interceptable = VALUES(not_interceptable)`,
         {
           replacements: {
             sessionId: CreatedSessionId,
@@ -494,7 +510,7 @@ export class InterventionAdapter implements IInterventionAdapter {
             ps9: PreviousValues?.ps9 ?? 0,
             po: PreviousValues?.po ?? 0,
             workPermit: PreviousValues?.work_permit ?? 0,
-            nonIntercettabile: PreviousValues?.non_intercettabile ?? 0,
+            notInterceptable: PreviousValues?.not_interceptable ?? 0,
           },
           type: QueryTypes.INSERT,
         },
@@ -512,9 +528,9 @@ export class InterventionAdapter implements IInterventionAdapter {
         ps9: number;
         po: number;
         work_permit: number;
-        non_intercettabile: number;
+        not_interceptable: number;
       }>(
-        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+        `SELECT intervention_id, ps9, po, work_permit, not_interceptable
          FROM priority_tracking_items
          WHERE session_id = :sessionId
            AND selection = 1
@@ -532,8 +548,8 @@ export class InterventionAdapter implements IInterventionAdapter {
         const Extra = SelectedNotExecuted[Idx]
         await Sequelize.query(
           `INSERT INTO priority_tracking_items
-            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
-           VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :nonIntercettabile)
+            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable)
+           VALUES (:sessionId, :interventionId, :rankOrder, :selection, :ps9, :po, :workPermit, :notInterceptable)
            ON DUPLICATE KEY UPDATE rank_order = VALUES(rank_order)`,
           {
             replacements: {
@@ -544,7 +560,7 @@ export class InterventionAdapter implements IInterventionAdapter {
               ps9: Extra.ps9,
               po: Extra.po,
               workPermit: Extra.work_permit,
-              nonIntercettabile: Extra.non_intercettabile,
+              notInterceptable: Extra.not_interceptable,
             },
             type: QueryTypes.INSERT,
           },
@@ -561,12 +577,12 @@ export class InterventionAdapter implements IInterventionAdapter {
         ps9: number;
         po: number;
         work_permit: number;
-        non_intercettabile: number;
+        not_interceptable: number;
       }>(
-        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+        `SELECT intervention_id, ps9, po, work_permit, not_interceptable
          FROM priority_tracking_items
          WHERE session_id = :sessionId
-           AND (ps9 = 1 OR po = 1 OR work_permit = 1 OR non_intercettabile = 1)
+           AND (ps9 = 1 OR po = 1 OR work_permit = 1 OR not_interceptable = 1)
            AND selection = 0
            AND executed = 0
            AND intervention_id NOT IN (
@@ -592,8 +608,8 @@ export class InterventionAdapter implements IInterventionAdapter {
         const Extra = ReadyNotSelected[Idx]
         await Sequelize.query(
           `INSERT INTO priority_tracking_items
-            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile)
-           VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile)
+            (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable)
+           VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :notInterceptable)
            ON DUPLICATE KEY UPDATE rank_order = rank_order`,
           {
             replacements: {
@@ -603,7 +619,7 @@ export class InterventionAdapter implements IInterventionAdapter {
               ps9: Extra.ps9,
               po: Extra.po,
               workPermit: Extra.work_permit,
-              nonIntercettabile: Extra.non_intercettabile,
+              notInterceptable: Extra.not_interceptable,
             },
             type: QueryTypes.INSERT,
           },
@@ -619,10 +635,10 @@ export class InterventionAdapter implements IInterventionAdapter {
         ps9: number;
         po: number;
         work_permit: number;
-        non_intercettabile: number;
+        not_interceptable: number;
         manually_added_at: Date;
       }>(
-        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile, manually_added_at
+        `SELECT intervention_id, ps9, po, work_permit, not_interceptable, manually_added_at
          FROM priority_tracking_items
          WHERE session_id = :sessionId
            AND manually_added_at IS NOT NULL
@@ -648,8 +664,8 @@ export class InterventionAdapter implements IInterventionAdapter {
           const Extra = ManuallyAddedNotSelected[Idx]
           await Sequelize.query(
             `INSERT INTO priority_tracking_items
-              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, manually_added_at)
-             VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile, :manuallyAddedAt)
+              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable, manually_added_at)
+             VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :notInterceptable, :manuallyAddedAt)
              ON DUPLICATE KEY UPDATE rank_order = rank_order`,
             {
               replacements: {
@@ -659,7 +675,7 @@ export class InterventionAdapter implements IInterventionAdapter {
                 ps9: Extra.ps9,
                 po: Extra.po,
                 workPermit: Extra.work_permit,
-                nonIntercettabile: Extra.non_intercettabile,
+                notInterceptable: Extra.not_interceptable,
                 manuallyAddedAt: Extra.manually_added_at,
               },
               type: QueryTypes.INSERT,
@@ -846,9 +862,9 @@ export class InterventionAdapter implements IInterventionAdapter {
     if (WeekStartKey === TodayMondayStr && PrevSession[0]) {
       const Unfinished = await Sequelize.query<{
         intervention_id: number; ps9: number; po: number;
-        work_permit: number; non_intercettabile: number;
+        work_permit: number; not_interceptable: number;
       }>(
-        `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+        `SELECT intervention_id, ps9, po, work_permit, not_interceptable
          FROM priority_tracking_items
          WHERE session_id = :prevId
            AND selection = 1
@@ -867,7 +883,7 @@ export class InterventionAdapter implements IInterventionAdapter {
                ps9 = 1,
                po = 1,
                work_permit = 1,
-               non_intercettabile = 1,
+               not_interceptable = 1,
                updated_at = CURRENT_TIMESTAMP
            WHERE session_id = :anchorId
              AND intervention_id IN (:interventionIds)
@@ -878,8 +894,8 @@ export class InterventionAdapter implements IInterventionAdapter {
           },
         )
 
-        const Missing = await Sequelize.query<{ intervention_id: number; ps9: number; po: number; work_permit: number; non_intercettabile: number }>(
-          `SELECT intervention_id, ps9, po, work_permit, non_intercettabile
+        const Missing = await Sequelize.query<{ intervention_id: number; ps9: number; po: number; work_permit: number; not_interceptable: number }>(
+          `SELECT intervention_id, ps9, po, work_permit, not_interceptable
            FROM priority_tracking_items
            WHERE session_id = :prevId
              AND selection = 1
@@ -899,8 +915,8 @@ export class InterventionAdapter implements IInterventionAdapter {
         for (const Item of Missing) {
           await Sequelize.query(
             `INSERT INTO priority_tracking_items
-              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
-             VALUES (:sessionId, :interventionId, :rankOrder, 1, :ps9, :po, :workPermit, :nonIntercettabile, NULL, 0)
+              (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable, rationale, executed)
+             VALUES (:sessionId, :interventionId, :rankOrder, 1, :ps9, :po, :workPermit, :notInterceptable, NULL, 0)
              ON DUPLICATE KEY UPDATE rank_order = rank_order`,
             {
               replacements: {
@@ -909,7 +925,7 @@ export class InterventionAdapter implements IInterventionAdapter {
                 rankOrder: NextRank++,
                 ps9: Item.ps9, po: Item.po,
                 workPermit: Item.work_permit,
-                nonIntercettabile: Item.non_intercettabile,
+                notInterceptable: Item.not_interceptable,
               },
               type: QueryTypes.INSERT,
             },
@@ -1008,7 +1024,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       ps9: number;
       po: number;
       work_permit: number;
-      non_intercettabile: number;
+      not_interceptable: number;
       rationale: PriorityTrackingRationale | null;
       executed: number;
     }>(
@@ -1021,7 +1037,7 @@ export class InterventionAdapter implements IInterventionAdapter {
          i.ps9,
          i.po,
          i.work_permit,
-         i.non_intercettabile,
+         i.not_interceptable,
          i.rationale,
          i.executed AS executed
        FROM priority_tracking_items i
@@ -1077,7 +1093,7 @@ export class InterventionAdapter implements IInterventionAdapter {
           PS9: boolean;
           PO: boolean;
           WorkPermit: boolean;
-          NonIntercettabile: boolean;
+          NotInterceptable: boolean;
           Rationale: PriorityTrackingRationale | null;
           Executed: boolean;
         }> = {}
@@ -1091,7 +1107,7 @@ export class InterventionAdapter implements IInterventionAdapter {
             PS9: Item.ps9 === 1,
             PO: Item.po === 1,
             WorkPermit: Item.work_permit === 1,
-            NonIntercettabile: Item.non_intercettabile === 1,
+            NotInterceptable: Item.not_interceptable === 1,
             Rationale: Item.rationale,
             Executed: Item.executed === 1,
           }
@@ -1149,15 +1165,15 @@ export class InterventionAdapter implements IInterventionAdapter {
     PS9: boolean;
     PO: boolean;
     WorkPermit: boolean;
-    NonIntercettabile: boolean;
+    NotInterceptable: boolean;
   } | null> {
     const Rows = await Sequelize.query<{
       ps9: number;
       po: number;
       work_permit: number;
-      non_intercettabile: number;
+      not_interceptable: number;
     }>(
-      `SELECT ps9, po, work_permit, non_intercettabile
+      `SELECT ps9, po, work_permit, not_interceptable
        FROM priority_tracking_items
        WHERE id = :itemId
        LIMIT 1${transaction ? ' FOR UPDATE' : ''}`,
@@ -1175,7 +1191,7 @@ export class InterventionAdapter implements IInterventionAdapter {
       PS9: Row.ps9 === 1,
       PO: Row.po === 1,
       WorkPermit: Row.work_permit === 1,
-      NonIntercettabile: Row.non_intercettabile === 1,
+      NotInterceptable: Row.not_interceptable === 1,
     }
   }
 
@@ -1184,7 +1200,7 @@ export class InterventionAdapter implements IInterventionAdapter {
     PS9?: boolean;
     PO?: boolean;
     WorkPermit?: boolean;
-    NonIntercettabile?: boolean;
+    NotInterceptable?: boolean;
     Rationale?: PriorityTrackingRationale | null;
   }, transaction?: unknown): Promise<void> {
     const Fields: string[] = []
@@ -1206,9 +1222,9 @@ export class InterventionAdapter implements IInterventionAdapter {
       Fields.push('work_permit = :workPermit')
       Replacements.workPermit = patch.WorkPermit ? 1 : 0
     }
-    if (patch.NonIntercettabile !== undefined) {
-      Fields.push('non_intercettabile = :nonIntercettabile')
-      Replacements.nonIntercettabile = patch.NonIntercettabile ? 1 : 0
+    if (patch.NotInterceptable !== undefined) {
+      Fields.push('not_interceptable = :notInterceptable')
+      Replacements.notInterceptable = patch.NotInterceptable ? 1 : 0
     }
     if (patch.Rationale !== undefined) {
       Fields.push('rationale = :rationale')
@@ -1231,8 +1247,8 @@ export class InterventionAdapter implements IInterventionAdapter {
 
   async AddInterventionToNextSession(itemId: number, transaction?: unknown): Promise<void> {
     // Fetch item's intervention_id, session's week_start_date, and approval flags
-    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string; ps9: number; po: number; work_permit: number; non_intercettabile: number }>(
-      `SELECT pti.intervention_id, ps.week_start_date, pti.ps9, pti.po, pti.work_permit, pti.non_intercettabile
+    const ItemRow = await Sequelize.query<{ intervention_id: number; week_start_date: string; ps9: number; po: number; work_permit: number; not_interceptable: number }>(
+      `SELECT pti.intervention_id, ps.week_start_date, pti.ps9, pti.po, pti.work_permit, pti.not_interceptable
        FROM priority_tracking_items pti
        INNER JOIN priority_tracking_sessions ps ON ps.id = pti.session_id
        WHERE pti.id = :itemId
@@ -1334,10 +1350,10 @@ export class InterventionAdapter implements IInterventionAdapter {
 
     await Sequelize.query(
       `INSERT INTO priority_tracking_items
-        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed)
-       VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :nonIntercettabile, NULL, 0)`,
+        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable, rationale, executed)
+       VALUES (:sessionId, :interventionId, :rankOrder, 0, :ps9, :po, :workPermit, :notInterceptable, NULL, 0)`,
       {
-        replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank, ps9: Item.ps9, po: Item.po, workPermit: Item.work_permit, nonIntercettabile: Item.non_intercettabile },
+        replacements: { sessionId: Next.id, interventionId: Item.intervention_id, rankOrder: NextRank, ps9: Item.ps9, po: Item.po, workPermit: Item.work_permit, notInterceptable: Item.not_interceptable },
         type: QueryTypes.INSERT,
         ...(transaction ? { transaction: transaction as import('sequelize').Transaction } : {}),
       },
@@ -1384,7 +1400,7 @@ export class InterventionAdapter implements IInterventionAdapter {
 
     await Sequelize.query(
       `INSERT INTO priority_tracking_items
-        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, non_intercettabile, rationale, executed, manually_added_at)
+        (session_id, intervention_id, rank_order, selection, ps9, po, work_permit, not_interceptable, rationale, executed, manually_added_at)
        VALUES (:sessionId, :interventionId, :rankOrder, 0, 0, 0, 0, 0, NULL, 0, CURRENT_TIMESTAMP)`,
       {
         replacements: { sessionId, interventionId, rankOrder: NextRank },

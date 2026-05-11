@@ -12,3 +12,5 @@ Thumbs.db
 coverage/
 .vscode/
 *.tsbuildinfo
+migration/v1tov2/data/photo_before
+migration/v1tov2/data/photo_after

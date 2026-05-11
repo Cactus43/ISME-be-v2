@@ -4,8 +4,8 @@ import { BadRequestError } from '../Data/Exceptions/Index';
 import type { MediaSlot, UploadedMediaFile } from '../Data/Types/Media';
 
 const MEDIA_SLOT_FOLDERS: Record<MediaSlot, string> = {
-  photo_before: 'fotoPerdita',
-  photo_after: 'fotoRiparazione',
+  photo_before: 'photo_before',
+  photo_after: 'photo_after',
 };
 
 const MIME_EXTENSION_MAP: Record<string, string> = {

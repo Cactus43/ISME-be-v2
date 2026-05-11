@@ -7,6 +7,9 @@
     "dev": "tsx watch src/Index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/Index.js",
+    "migrate:v1tov2": "tsx migration/v1tov2/MigrateV1ToV2.ts",
+    "migrate:v1tov2:clean-target": "tsx migration/v1tov2/CleanMigrationTargetDb.ts",
+    "migrate:v1tov2:check": "tsx migration/v1tov2/CheckMigration.ts",
     "lint": "eslint src/ --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest"
