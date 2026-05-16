@@ -19,8 +19,8 @@ import type { MediaSlot } from '../Types/Media';
 // Covers both backoffice users (admin/viewer) and operators — role-filtered.
 
 export interface IUserAdapter {
-  FindByEmail(email: string): Promise<UserAttributes | null>;
-  FindByUsername(username: string): Promise<UserAttributes | null>;
+  FindByEmail(email: string, opts?: { includeInactive?: boolean }): Promise<UserAttributes | null>;
+  FindByUsername(username: string, opts?: { includeInactive?: boolean }): Promise<UserAttributes | null>;
   FindById(id: number, opts?: { excludePassword?: boolean; includeInactive?: boolean }): Promise<UserAttributes | null>;
   FindAllByRole(role: string, opts?: { excludePassword?: boolean; includeInactive?: boolean }): Promise<UserAttributes[]>;
   Create(data: Partial<UserAttributes>): Promise<UserAttributes>;

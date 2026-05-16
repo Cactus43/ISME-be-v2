@@ -9,17 +9,21 @@ import type { IUserAdapter } from '../Data/Interfaces/IAdapter';
 export class UserAdapter implements IUserAdapter {
 
   /** Look up by email — backoffice login path */
-  async FindByEmail(email: string): Promise<UserAttributes | null> {
+  async FindByEmail(email: string, opts?: { includeInactive?: boolean }): Promise<UserAttributes | null> {
+    const where: Record<string, unknown> = { email, deleted_at: null };
+    if (!opts?.includeInactive) where.is_active = 1;
     const row = await User.findOne({
-      where: { email, is_active: 1, deleted_at: null },
+      where,
     });
     return row?.get({ plain: true }) ?? null;
   }
 
   /** Look up by username — mobile login path */
-  async FindByUsername(username: string): Promise<UserAttributes | null> {
+  async FindByUsername(username: string, opts?: { includeInactive?: boolean }): Promise<UserAttributes | null> {
+    const where: Record<string, unknown> = { username, deleted_at: null };
+    if (!opts?.includeInactive) where.is_active = 1;
     const row = await User.findOne({
-      where: { username, is_active: 1, deleted_at: null },
+      where,
     });
     return row?.get({ plain: true }) ?? null;
   }
