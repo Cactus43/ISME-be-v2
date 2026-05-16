@@ -658,24 +658,33 @@ export class InterventionOperations implements IInterventionOperations {
               continue
             }
 
-            const NextStatus = updateData.status ?? existing.status;
-            const NextRepairDate = updateData.repair_date !== undefined
-              ? updateData.repair_date
-              : existing.repair_date;
-            const IsClosed = Number(NextStatus) !== 1 || NextRepairDate != null;
-            if (IsClosed) {
-              await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(serverId);
-            } else {
-              await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(serverId)
+            // Mark success immediately after the core update so that even if
+            // the post-update operations below throw, the client knows the
+            // update was committed (prevents stale row_version on retry).
+            idMap[localId] = serverId;
+
+            try {
+              const NextStatus = updateData.status ?? existing.status;
+              const NextRepairDate = updateData.repair_date !== undefined
+                ? updateData.repair_date
+                : existing.repair_date;
+              const IsClosed = Number(NextStatus) !== 1 || NextRepairDate != null;
+              if (IsClosed) {
+                await this._interventionAdapter.MarkLatestPriorityTrackingItemExecuted(serverId);
+              } else {
+                await this._interventionAdapter.ResetLatestPriorityTrackingItemExecuted(serverId)
+              }
+
+              if (photoBefore) {
+                await this._savePhoto(serverId, photoBefore, 'photo_before', context.UserId, context.DeviceId);
+              }
+              if (photoAfter) {
+                await this._savePhoto(serverId, photoAfter, 'photo_after', context.UserId, context.DeviceId);
+              }
+            } catch (postUpdateErr) {
+              this._log.warn({ serverId, localId, error: postUpdateErr }, 'Post-update operations failed but core update was committed')
             }
 
-            if (photoBefore) {
-              await this._savePhoto(serverId, photoBefore, 'photo_before', context.UserId, context.DeviceId);
-            }
-            if (photoAfter) {
-              await this._savePhoto(serverId, photoAfter, 'photo_after', context.UserId, context.DeviceId);
-            }
-            idMap[localId] = serverId;
             continue;
           }
         }
