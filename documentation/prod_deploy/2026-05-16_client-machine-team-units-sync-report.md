@@ -4,6 +4,12 @@
 
 Allineare l'anagrafica delle unità applicative alla lista di riferimento `team_units.csv`, mantenendo le associazioni corrette tra team e unità.
 
+## Chiarimenti
+
+- `Anagrafica` = elenco ufficiale e strutturato dei valori ammessi nel sistema.
+- `Allineamento` = verifica e correzione dei dati affinche' coincidano con la lista di riferimento approvata.
+- `Intervento storico` = dato gia' registrato in passato, da preservare per coerenza documentale.
+
 ## Stato iniziale rilevato
 
 Il team `CPX-D` era già presente nell'ambiente online.
@@ -37,6 +43,8 @@ Gli interventi associati a `CPX-A / DAU2` sono stati riallineati a `LUBE2 / DAU2
 
 L'unità `CANDELA` è stata mantenuta e lasciata associata a `CPX-C`, perché già usata da un intervento storico.
 
+Questa decisione evita perdita di continuita' sul dato storico: il sistema resta coerente sia con la lista di riferimento sia con le registrazioni pregresse.
+
 ## Stato finale
 
 Conteggio finale unità per team:
@@ -63,3 +71,5 @@ La lista finale comprende tutte le unità presenti nel file di riferimento più 
 - `CPX-C / CANDELA` presente in anagrafica: sì
 
 È stato inoltre verificato che non è rimasta alcuna tabella persistente di lavoro usata per l'allineamento.
+
+In altre parole, l'attivita' e' stata chiusa senza lasciare artefatti tecnici temporanei nel database di produzione.

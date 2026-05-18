@@ -12,6 +12,13 @@ Durante alcune operazioni `apt` sul server clienti, il comando completava la par
 
 Il blocco non ha riguardato direttamente Docker, nginx, MySQL o l'applicazione ISME v2. Il processo rimasto appeso era legato all'aggiornamento del messaggio di login di Ubuntu, cioe' il riepilogo che mostra informazioni tipo aggiornamenti disponibili e stato del sistema quando si apre una sessione SSH.
 
+## Chiarimenti
+
+- `APT` e' il sistema con cui Linux installa e aggiorna software di sistema.
+- Un `post-hook` e' un passaggio automatico eseguito a fine installazione/aggiornamento.
+- `update-motd` aggiorna il messaggio informativo mostrato all'accesso remoto (SSH).
+- In questo caso il software principale veniva installato correttamente, ma il passaggio informativo finale restava bloccato.
+
 ## Sintomo osservato
 
 Dopo comandi come:
@@ -99,6 +106,8 @@ Quando il processo era bloccato chiaramente nel post-hook `update-motd`, e solo 
 Questo ha permesso di proseguire senza impattare i servizi applicativi.
 
 Nota: questo e' un workaround operativo, non una correzione strutturale.
+
+In termini pratici: e' equivalente a "chiudere in sicurezza la coda di una procedura gia' conclusa", per evitare che la sessione resti apparentemente bloccata.
 
 ## Raccomandazioni
 

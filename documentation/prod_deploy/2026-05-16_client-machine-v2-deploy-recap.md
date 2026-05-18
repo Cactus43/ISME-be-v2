@@ -12,6 +12,13 @@ E' stata completata la migrazione della macchina clienti dal servizio legacy Apa
 
 Il database migrato localmente e' stato caricato sulla macchina clienti come database applicativo v2, il frontend e il backend sono stati pubblicati in container Docker, e nginx e' stato configurato come reverse proxy HTTPS usando il certificato Let's Encrypt gia' presente.
 
+## Chiarimenti
+
+- `Container Docker` = ambiente applicativo isolato e standardizzato, utile per ridurre differenze tra ambienti.
+- `Docker Compose` = strumento che avvia e coordina piu' container come un unico servizio.
+- `Reverse proxy` = componente (nginx) che riceve le richieste internet e le inoltra in sicurezza ai servizi interni.
+- `Smoke test` = insieme di controlli rapidi per verificare che il servizio sia operativo dopo il rilascio.
+
 ## Backup iniziale
 
 Prima del deploy e delle modifiche applicative e' stato creato un backup della macchina clienti.
@@ -151,6 +158,8 @@ isme-v2-frontend  healthy   127.0.0.1:3001->80
 
 Il vecchio `docker-compose` v1 e' stato rimosso, insieme alle dipendenze orfane e agli artefatti Docker intermedi/dangling generati dai primi tentativi di build.
 
+Questa pulizia riduce il rischio di confusione operativa e limita il consumo non necessario di spazio disco.
+
 ## Web server
 
 Nginx e' ora il web server pubblico.
@@ -207,6 +216,8 @@ pm2 jlist -> []
 
 La lista PM2 vuota e' stata salvata, cosi' il processo legacy non dovrebbe ripartire al reboot.
 
+In termini gestionali: al riavvio macchina non e' previsto il ritorno automatico del vecchio applicativo.
+
 ## Smoke test finali
 
 Smoke test verificati:
@@ -251,3 +262,5 @@ docker compose v2
 isme-v2-backend
 isme-v2-frontend
 ```
+
+Dal punto di vista cliente, questo corrisponde a un passaggio completo al nuovo ambiente ISME v2, con pubblicazione HTTPS attiva e servizi legacy dismessi.

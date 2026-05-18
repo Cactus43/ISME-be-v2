@@ -11,6 +11,13 @@ Le immagini reali erano ancora presenti nella vecchia struttura legacy:
 
 È stata quindi rifatta la migrazione in locale includendo le immagini reali, poi il risultato è stato caricato online.
 
+## Chiarimenti
+
+- `Migrazione` = trasferimento strutturato dei dati dal vecchio sistema al nuovo.
+- `Mapping` = regola di collegamento che associa ogni immagine al corretto intervento.
+- `Dump DB` = copia completa del database in un file, usata come backup e ripristino.
+- `SHA256` = impronta digitale del file, usata per verificare che il contenuto non sia stato alterato.
+
 ## Backup prima della sostituzione online
 
 Prima della sostituzione su server è stato creato un backup mirato, senza duplicare nuovamente tutto il backup macchina già esistente:
@@ -24,6 +31,8 @@ Contenuto principale:
 - `SHA256SUMS.txt`
 
 Nota: un primo tentativo di dump pochi secondi prima è stato interrotto dal permesso MySQL mancante sui tablespace. Il backup valido è quello indicato sopra, eseguito con `--no-tablespaces`.
+
+In termini pratici: il backup valido è completo per lo scopo operativo del progetto e utilizzabile per ripristino.
 
 ## Preparazione locale
 
@@ -59,6 +68,8 @@ Per i duplicati case-sensitive in `fotoRiparazione` è stata mantenuta solo la v
 - mantenuto `LUBE1-0019-24.jpg`, escluso `Lube1-0019-24.jpg`
 
 I file incerti non sono stati forzati.
+
+Questa scelta è intenzionale e prudenziale: è stato privilegiato un dato certo e tracciabile rispetto a un'associazione potenzialmente errata.
 
 ## Conteggi
 
@@ -154,6 +165,8 @@ Analisi root cause:
 - il volume bind mount e' `/opt/isme-v2/backend/data -> /data`
 - le directory sotto `/data` avevano owner `501:staff`, quindi non scrivibili dall'utente runtime del container
 
+Traduzione operativa: l'applicazione funzionava, ma non aveva autorizzazione tecnica per salvare nuovi file immagine nel percorso dati.
+
 Correzione applicata sul server:
 
 - `chown -R 1001:1001 /opt/isme-v2/backend/data`
@@ -179,3 +192,5 @@ Smoke HTTPS:
 - `https://www.ismeperditevapore.it/health`: OK
 
 Nota: il test diretto anonimo su `/api/media/:id/file` restituisce correttamente `401`, perché la rotta media è autenticata.
+
+Questo è il comportamento atteso lato sicurezza: i file media non sono esposti pubblicamente senza autenticazione.

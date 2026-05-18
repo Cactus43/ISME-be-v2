@@ -14,6 +14,13 @@ Il rinnovo automatico era gia' schedulato tramite `certbot.timer`, ma i file di 
 
 Il dry-run di rinnovo e' stato eseguito con successo.
 
+## Chiarimenti
+
+- `Let's Encrypt` e' l'ente che emette gratuitamente il certificato digitale HTTPS.
+- `Certbot` e' il software che rinnova automaticamente il certificato prima della scadenza.
+- `Timer` significa esecuzione pianificata automatica (senza intervento manuale).
+- `Dry-run` significa simulazione completa del rinnovo: verifica la procedura senza modificare il certificato reale in uso.
+
 ## Stato iniziale rilevato
 
 Certbot era installato:
@@ -79,6 +86,8 @@ Il contenuto del hook esegue:
 nginx -t
 systemctl reload nginx
 ```
+
+Questo passaggio garantisce continuita' del servizio: nginx ricarica la configurazione/certificato senza interruzione percepibile dagli utenti.
 
 Sono stati inoltre riallineati i file TLS helper di Certbot per nginx:
 
@@ -164,3 +173,5 @@ Lo stack ISME v2 resta pubblicato tramite nginx e container Docker Compose v2.
 Il rinnovo automatico dei certificati Let's Encrypt e' ora coerente con lo stack nginx attivo sulla macchina.
 
 Il timer Certbot e' attivo, i renewal file usano il plugin nginx, nginx viene ricaricato dopo un rinnovo riuscito, e il dry-run completo del rinnovo e' passato con successo.
+
+In termini di rischio operativo, la probabilita' di scadenza inattesa del certificato e' ora significativamente ridotta rispetto alla configurazione precedente.
