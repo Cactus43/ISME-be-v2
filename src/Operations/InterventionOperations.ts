@@ -628,8 +628,12 @@ export class InterventionOperations implements IInterventionOperations {
             if (item.location !== undefined) updateData.location = item.location;
             if (item.component_equipment !== undefined) updateData.component_equipment = item.component_equipment;
             if (item.size !== undefined) updateData.size = item.size;
+            if (item.operator_id !== undefined) updateData.operator_id = item.operator_id;
             if (item.pressure !== undefined) updateData.pressure = item.pressure;
             if (item.plume_length !== undefined) updateData.plume_length = item.plume_length;
+            if (item.intervention_description !== undefined) updateData.intervention_description = item.intervention_description;
+            if (item.post_date !== undefined) updateData.post_date = item.post_date;
+            if (item.reason !== undefined) updateData.reason = item.reason;
             if (item.repair_date !== undefined) updateData.repair_date = item.repair_date ? new Date(item.repair_date) : null;
             if (item.status !== undefined) updateData.status = item.status;
             if (item.priority !== undefined) updateData.priority = item.priority;
@@ -731,7 +735,7 @@ export class InterventionOperations implements IInterventionOperations {
           const intervention = await this._interventionAdapter.Create(
             {
               ...normalized,
-              operator_id: context.UserId,
+              operator_id: context.UserId ?? (typeof normalized.operator_id === 'number' ? normalized.operator_id : null),
               device_id: context.DeviceId,
               inspection_date: inspectionDateStr ? new Date(inspectionDateStr) : new Date(),
               repair_date: repairDateStr ? new Date(repairDateStr) : null,
