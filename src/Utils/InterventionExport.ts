@@ -39,6 +39,7 @@ export type InterventionExportColumnKey =
   | 'traitLength'
   | 'notification'
   | 'closureNotification'
+  | 'approvalNote'
   | 'interventionDescription'
   | 'reason'
   | 'createdAt'
@@ -110,6 +111,7 @@ const HeaderByLanguage: Record<ExportLanguage, Record<InterventionExportColumnKe
     traitLength: 'Lunghezza Tratto',
     notification: 'Notifica',
     closureNotification: 'Notifica Chiusura',
+    approvalNote: 'Note Approvazione',
     interventionDescription: 'Descrizione Intervento',
     reason: 'Motivazione',
     createdAt: 'Creato Il',
@@ -154,6 +156,7 @@ const HeaderByLanguage: Record<ExportLanguage, Record<InterventionExportColumnKe
     traitLength: 'Trait Length',
     notification: 'Notification',
     closureNotification: 'Closure Notification',
+    approvalNote: 'Approval Note',
     interventionDescription: 'Intervention Description',
     reason: 'Reason',
     createdAt: 'Created At',
@@ -232,6 +235,7 @@ function GetInterventionExportColumns(language: ExportLanguage): InterventionExp
     { Key: 'traitLength', Header: H.traitLength, GetValue: (row) => row.trait_length ?? '' },
     { Key: 'notification', Header: H.notification, GetValue: (row) => row.notification ?? '' },
     { Key: 'closureNotification', Header: H.closureNotification, GetValue: (row) => row.closure_notification ?? '' },
+    { Key: 'approvalNote', Header: H.approvalNote, GetValue: (row) => row.approval_note ?? '' },
     { Key: 'interventionDescription', Header: H.interventionDescription, GetValue: (row) => row.intervention_description ?? '' },
     { Key: 'reason', Header: H.reason, GetValue: (row) => row.reason ?? '' },
     { Key: 'createdAt', Header: H.createdAt, GetValue: (row) => FormatDateTime(row.created_at) },
