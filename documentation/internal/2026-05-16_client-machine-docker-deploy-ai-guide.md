@@ -31,6 +31,7 @@ Sensitive credentials are not included in this guide. Ask the operator for SSH c
 - Do not leave temporary SQL dumps, tarballs, or failed-attempt files in `/root` or `/tmp`.
 - Use Docker Compose v2 syntax: `docker compose`, not `docker-compose`.
 - Do not deploy the Electron/mobile app to this server.
+- Never wipe or replace `backend/data/photo_before` and `backend/data/photo_after` during code deploys unless an explicit media migration/restore step is part of the runbook.
 
 ## Preflight Checks
 
@@ -136,6 +137,15 @@ Sync backend code to:
 ```
 
 Preserve the server-side runtime `.env`. Do not overwrite it with a local development `.env`.
+Preserve backend media directories (`data/photo_before`, `data/photo_after`) and any persistent runtime data needed by file-serving endpoints.
+
+If you are replacing backend files manually, do **not** run blanket deletion commands that remove `backend/data`.
+Use a selective cleanup approach that keeps `.env*` and `data/`:
+
+```bash
+cd /opt/isme-v2/backend
+find . -mindepth 1 -maxdepth 1 ! -name '.env*' ! -name 'data' -exec rm -rf {} +
+```
 
 Then rebuild and restart only the backend service:
 
@@ -179,6 +189,7 @@ Recommended order:
 1. Inspect current containers and nginx.
 2. Back up backend code if backend code is being replaced.
 3. Sync backend code, preserving backend/.env.
+3a. Preserve backend media directories (`backend/data/photo_before`, `backend/data/photo_after`).
 4. Build and restart backend.
 5. Wait for backend healthy and smoke /health.
 6. Sync frontend code.
