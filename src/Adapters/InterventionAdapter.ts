@@ -256,7 +256,7 @@ export class InterventionAdapter implements IInterventionAdapter {
         executed TINYINT(1) NOT NULL DEFAULT 0,
         executed_at DATETIME NULL,
         manually_added_at DATETIME NULL,
-        rationale ENUM('Mancanza Operatore', 'Difficolta Intercetto', 'Mancanza materiali', 'Permesso non aperto') NULL,
+        rationale ENUM('Mancanza Operatore', 'Difficolta Intercetto', 'Mancanza materiali', 'Permesso non aperto', 'Presenza Amianto') NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -348,6 +348,25 @@ export class InterventionAdapter implements IInterventionAdapter {
       await Sequelize.query(`
         ALTER TABLE priority_tracking_items
         ADD COLUMN manually_added_at DATETIME NULL
+      `)
+    }
+
+    // Keep rationale enum aligned for existing databases, but only when needed.
+    const RationaleColumn = await Sequelize.query<{ column_type: string | null }>(
+      `SELECT COLUMN_TYPE AS column_type
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'priority_tracking_items'
+         AND COLUMN_NAME = 'rationale'
+       LIMIT 1`,
+      { type: QueryTypes.SELECT },
+    )
+
+    const CurrentRationaleColumnType = String(RationaleColumn[0]?.column_type ?? '').toLowerCase()
+    if (!CurrentRationaleColumnType.includes('presenza amianto')) {
+      await Sequelize.query(`
+        ALTER TABLE priority_tracking_items
+        MODIFY COLUMN rationale ENUM('Mancanza Operatore', 'Difficolta Intercetto', 'Mancanza materiali', 'Permesso non aperto', 'Presenza Amianto') NULL
       `)
     }
   }

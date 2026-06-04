@@ -92,7 +92,7 @@ export interface IInterventionOperations {
     ps9?: boolean;
     po?: boolean;
     workPermit?: boolean;
-    rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+    rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | 'Presenza Amianto' | null;
   }, context: RequestContext): Promise<OperationResult<void>>;
   ExportCsv(teamCode?: string, options?: ExportCsvOptions): Promise<OperationResult<string>>;
   ExportExcel(teamCode?: string, options?: ExportExcelOptions): Promise<OperationResult<Buffer>>;

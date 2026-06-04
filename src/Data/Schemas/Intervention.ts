@@ -164,6 +164,7 @@ export const PRIORITY_TRACKING_UPDATE_SCHEMA = z.object({
     'Difficolta Intercetto',
     'Mancanza materiali',
     'Permesso non aperto',
+    'Presenza Amianto',
   ]).nullable().optional(),
 });
 

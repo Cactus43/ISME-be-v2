@@ -99,7 +99,8 @@ export type PriorityTrackingRationale =
   | 'Mancanza Operatore'
   | 'Difficolta Intercetto'
   | 'Mancanza materiali'
-  | 'Permesso non aperto';
+  | 'Permesso non aperto'
+  | 'Presenza Amianto';
 
 export interface PriorityTrackingItem {
   Id: number;

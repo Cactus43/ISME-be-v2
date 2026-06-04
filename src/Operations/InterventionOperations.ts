@@ -392,7 +392,7 @@ export class InterventionOperations implements IInterventionOperations {
       po?: boolean;
       workPermit?: boolean;
       notInterceptable?: boolean;
-      rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+      rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | 'Presenza Amianto' | null;
     },
     context: RequestContext,
   ): Promise<OperationResult<void>> {
@@ -408,7 +408,7 @@ export class InterventionOperations implements IInterventionOperations {
       PO?: boolean;
       WorkPermit?: boolean;
       NotInterceptable?: boolean;
-      Rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | null;
+      Rationale?: 'Mancanza Operatore' | 'Difficolta Intercetto' | 'Mancanza materiali' | 'Permesso non aperto' | 'Presenza Amianto' | null;
     } = {};
 
     if (patch.selection !== undefined || patch.ps9 !== undefined || patch.po !== undefined || patch.workPermit !== undefined || patch.notInterceptable !== undefined) {
